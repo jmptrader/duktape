@@ -45,10 +45,19 @@ def strip_comments_from_lines(lines):
 	# Not exact but close enough.  Doesn't handle string literals etc,
 	# but these are not a concrete issue for scanning preprocessor
 	# #define references.
+	#
+	# Comment contents are stripped of any DUK_ prefixed text to avoid
+	# incorrect requires/provides detection.  Other comment text is kept;
+	# in particular a "/* redefine */" comment must remain intact here.
+	#
 	# Avoid Python 2.6 vs. Python 2.7 argument differences.
+
+	def censor(x):
+		return re.sub(re.compile('DUK_\w+', re.MULTILINE), 'xxx', x.group(0))
+
 	tmp = '\n'.join(lines)
-	tmp = re.sub(re.compile('/\*.*?\*/', re.MULTILINE | re.DOTALL), '/* ... */', tmp)
-	tmp = re.sub(re.compile('//.*?$', re.MULTILINE), '// removed', tmp)
+	tmp = re.sub(re.compile('/\*.*?\*/', re.MULTILINE | re.DOTALL), censor, tmp)
+	tmp = re.sub(re.compile('//.*?$', re.MULTILINE), censor, tmp)
 	return tmp.split('\n')
 
 # Header snippet representation: lines, provides defines, requires defines.
