@@ -19,53 +19,42 @@
  *  Helpers
  */
 
-static void setup_duktape_buffer(duk_context *ctx, duk_idx_t idx) {
-	idx = duk_require_normalize_index(ctx, idx);
-	duk_eval_string(ctx,
-		"(function (plain_buffer) {\n"
-		"    return new Duktape.Buffer(plain_buffer);\n"
-		"})\n");
-	duk_dup(ctx, idx);
-	duk_call(ctx, 1);
-}
-
 static void setup_nodejs_buffer(duk_context *ctx, duk_idx_t idx) {
+	duk_size_t sz;
+
 	idx = duk_require_normalize_index(ctx, idx);
-	duk_eval_string(ctx,
-		"(function (plain_buffer) {\n"
-		"    return new Buffer(plain_buffer);\n"
-		"})\n");
-	duk_dup(ctx, idx);
-	duk_call(ctx, 1);
+	(void) duk_require_buffer(ctx, idx, &sz);
+	duk_push_buffer_object(ctx, idx, 0, sz, DUK_BUFOBJ_NODEJS_BUFFER);
 }
 
 static void setup_nodejs_buffer_slice(duk_context *ctx, duk_idx_t idx, duk_int_t start, duk_int_t end) {
+	duk_size_t sz;
+
 	idx = duk_require_normalize_index(ctx, idx);
+	(void) duk_require_buffer(ctx, idx, &sz);
 	duk_eval_string(ctx,
-		"(function (plain_buffer, start, end) {\n"
-		"    return Buffer(plain_buffer).slice(start, end);\n"
+		"(function (buf, start, end) {\n"
+		"    return buf.slice(start, end);\n"
 		"})\n");
-	duk_dup(ctx, idx);
+	duk_push_buffer_object(ctx, idx, 0, sz, DUK_BUFOBJ_NODEJS_BUFFER);
 	duk_push_int(ctx, start);
 	duk_push_int(ctx, end);
 	duk_call(ctx, 3);
 }
 
 static void setup_arraybuffer(duk_context *ctx, duk_idx_t idx) {
+	duk_size_t sz;
+
 	idx = duk_require_normalize_index(ctx, idx);
-	duk_eval_string(ctx,
-		"(function (plain_buffer) {\n"
-		"    return new ArrayBuffer(plain_buffer);\n"
-		"})\n");
-	duk_dup(ctx, idx);
-	duk_call(ctx, 1);
+	(void) duk_require_buffer(ctx, idx, &sz);
+	duk_push_buffer_object(ctx, idx, 0, sz, DUK_BUFOBJ_ARRAYBUFFER);
 }
 
 static void setup_typedarray(duk_context *ctx, duk_idx_t idx, const char *name) {
 	idx = duk_require_normalize_index(ctx, idx);
 	duk_push_sprintf(ctx,
 		"(function (plain_buffer) {\n"
-		"    return new %s(new ArrayBuffer(plain_buffer));\n"
+		"    return new %s(Object(plain_buffer));\n"
 		"})\n", name);
 	duk_eval(ctx);
 	duk_dup(ctx, idx);
@@ -76,7 +65,7 @@ static void setup_typedarray_slice(duk_context *ctx, duk_idx_t idx, const char *
 	idx = duk_require_normalize_index(ctx, idx);
 	duk_push_sprintf(ctx,
 		"(function (plain_buffer, start, length) {\n"
-		"    return new %s(new ArrayBuffer(plain_buffer), start, length);\n"
+		"    return new %s(Object(plain_buffer), start, length);\n"
 		"})\n", name);
 	duk_eval(ctx);
 	duk_dup(ctx, idx);
@@ -90,27 +79,6 @@ static void setup_typedarray_slice(duk_context *ctx, duk_idx_t idx, const char *
  */
 
 /*===
-*** test_duktape_buffer_indexed_1a (duk_safe_call)
-length 100
-1
-2
-3
-0 1
-99 2
-100 3
-length 100
-10
-11
-12
-13
-14
-0 10
-94 11
-95 0
-99 0
-100 14
-final top: 2
-==> rc=0, result='undefined'
 *** test_nodejs_buffer_indexed_1a (duk_safe_call)
 length 100
 1
@@ -430,18 +398,10 @@ static void shared_read_write_index(duk_context *ctx, duk_size_t resize_to) {
 	duk_pop(ctx);
 }
 
-/* Duktape.Buffer */
-static duk_ret_t test_duktape_buffer_indexed_1a(duk_context *ctx) {
-	duk_push_dynamic_buffer(ctx, 100);
-	setup_duktape_buffer(ctx, -1);
-	shared_read_write_index(ctx, 95);
-
-	printf("final top: %ld\n", (long) duk_get_top(ctx));
-	return 0;
-}
-
 /* Node.js Buffer, "full slice" */
-static duk_ret_t test_nodejs_buffer_indexed_1a(duk_context *ctx) {
+static duk_ret_t test_nodejs_buffer_indexed_1a(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 100);
 	setup_nodejs_buffer(ctx, -1);
 	shared_read_write_index(ctx, 95);
@@ -451,7 +411,9 @@ static duk_ret_t test_nodejs_buffer_indexed_1a(duk_context *ctx) {
 }
 
 /* Node.js Buffer, "partial slice" */
-static duk_ret_t test_nodejs_buffer_indexed_1b(duk_context *ctx) {
+static duk_ret_t test_nodejs_buffer_indexed_1b(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 150);
 	setup_nodejs_buffer_slice(ctx, -1, 30, 130);
 	shared_read_write_index(ctx, 30 + 95);
@@ -461,7 +423,9 @@ static duk_ret_t test_nodejs_buffer_indexed_1b(duk_context *ctx) {
 }
 
 /* ArrayBuffer, "full slice" */
-static duk_ret_t test_arraybuffer_indexed_1a(duk_context *ctx) {
+static duk_ret_t test_arraybuffer_indexed_1a(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 100);
 	setup_arraybuffer(ctx, -1);
 	shared_read_write_index(ctx, 95);
@@ -473,7 +437,9 @@ static duk_ret_t test_arraybuffer_indexed_1a(duk_context *ctx) {
 /* Can't create slices for ArrayBuffer directly. */
 
 /* Uint8Array, "full slice" */
-static duk_ret_t test_uint8array_indexed_1a(duk_context *ctx) {
+static duk_ret_t test_uint8array_indexed_1a(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 100);
 	setup_typedarray(ctx, -1, "Uint8Array");
 	shared_read_write_index(ctx, 95);
@@ -483,7 +449,9 @@ static duk_ret_t test_uint8array_indexed_1a(duk_context *ctx) {
 }
 
 /* Uint8Array, "partial slice" */
-static duk_ret_t test_uint8array_indexed_1b(duk_context *ctx) {
+static duk_ret_t test_uint8array_indexed_1b(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 150);
 	setup_typedarray_slice(ctx, -1, "Uint8Array", 30, 100);
 	shared_read_write_index(ctx, 30 + 95);
@@ -493,7 +461,9 @@ static duk_ret_t test_uint8array_indexed_1b(duk_context *ctx) {
 }
 
 /* Uint16Array, "full slice" */
-static duk_ret_t test_uint16array_indexed_1a(duk_context *ctx) {
+static duk_ret_t test_uint16array_indexed_1a(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 200);
 	setup_typedarray(ctx, -1, "Uint16Array");
 	shared_read_write_index(ctx, 95 * 2);
@@ -503,7 +473,9 @@ static duk_ret_t test_uint16array_indexed_1a(duk_context *ctx) {
 }
 
 /* Uint16Array, "partial slice" */
-static duk_ret_t test_uint16array_indexed_1b(duk_context *ctx) {
+static duk_ret_t test_uint16array_indexed_1b(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 300);
 	setup_typedarray_slice(ctx, -1, "Uint16Array", 60, 100);
 	shared_read_write_index(ctx, 60 + 95 * 2);
@@ -513,7 +485,9 @@ static duk_ret_t test_uint16array_indexed_1b(duk_context *ctx) {
 }
 
 /* Uint32Array, "full slice" */
-static duk_ret_t test_uint32array_indexed_1a(duk_context *ctx) {
+static duk_ret_t test_uint32array_indexed_1a(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 400);
 	setup_typedarray(ctx, -1, "Uint32Array");
 	shared_read_write_index(ctx, 95 * 4);
@@ -523,7 +497,9 @@ static duk_ret_t test_uint32array_indexed_1a(duk_context *ctx) {
 }
 
 /* Uint32Array, "partial slice" */
-static duk_ret_t test_uint32array_indexed_1b(duk_context *ctx) {
+static duk_ret_t test_uint32array_indexed_1b(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 600);
 	setup_typedarray_slice(ctx, -1, "Uint32Array", 120, 100);
 	shared_read_write_index(ctx, 120 + 95 * 4);
@@ -533,7 +509,9 @@ static duk_ret_t test_uint32array_indexed_1b(duk_context *ctx) {
 }
 
 /* Float32Array, "full slice" */
-static duk_ret_t test_float32array_indexed_1a(duk_context *ctx) {
+static duk_ret_t test_float32array_indexed_1a(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 400);
 	setup_typedarray(ctx, -1, "Float32Array");
 	shared_read_write_index(ctx, 95 * 4);
@@ -543,7 +521,9 @@ static duk_ret_t test_float32array_indexed_1a(duk_context *ctx) {
 }
 
 /* Float32Array, "partial slice" */
-static duk_ret_t test_float32array_indexed_1b(duk_context *ctx) {
+static duk_ret_t test_float32array_indexed_1b(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 600);
 	setup_typedarray_slice(ctx, -1, "Float32Array", 120, 100);
 	shared_read_write_index(ctx, 120 + 95 * 4);
@@ -553,7 +533,9 @@ static duk_ret_t test_float32array_indexed_1b(duk_context *ctx) {
 }
 
 /* Float64Array, "full slice" */
-static duk_ret_t test_float64array_indexed_1a(duk_context *ctx) {
+static duk_ret_t test_float64array_indexed_1a(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 800);
 	setup_typedarray(ctx, -1, "Float64Array");
 	shared_read_write_index(ctx, 95 * 8);
@@ -563,7 +545,9 @@ static duk_ret_t test_float64array_indexed_1a(duk_context *ctx) {
 }
 
 /* Float64Array, "partial slice" */
-static duk_ret_t test_float64array_indexed_1b(duk_context *ctx) {
+static duk_ret_t test_float64array_indexed_1b(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_dynamic_buffer(ctx, 1200);
 	setup_typedarray_slice(ctx, -1, "Float64Array", 240, 100);
 	shared_read_write_index(ctx, 240 + 95 * 8);
@@ -575,76 +559,78 @@ static duk_ret_t test_float64array_indexed_1b(duk_context *ctx) {
 /*===
 *** test_json_serialize_1 (duk_safe_call)
 resize to 20
-[null,{"type":"Buffer","data":[64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83]},{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[|404142434445464748494a4b4c4d4e4f50515253|,{type:"Buffer",data:[64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83]},{type:"Buffer",data:[67,68]},|404142434445464748494a4b4c4d4e4f50515253|,|404142434445464748494a4b4c4d4e4f50515253|,|424344454647|,|404142434445464748494a4b4c4d4e4f50515253|,|44454647|]
+[{"type":"Buffer","data":[64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83]},{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":75,"12":76,"13":77,"14":78,"15":79,"16":80,"17":81,"18":82,"19":83},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":1263159624,"3":1330531660,"4":1397903696},{"0":1195787588}]
+[{type:"Buffer",data:[64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83]},{type:"Buffer",data:[67,68]},|404142434445464748494a4b4c4d4e4f50515253|,|404142434445464748494a4b4c4d4e4f50515253|,|424344454647|,|404142434445464748494a4b4c4d4e4f50515253|,|44454647|]
 resize to 19
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":75,"12":76,"13":77,"14":78,"15":79,"16":80,"17":81,"18":82,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":1263159624,"3":1330531660,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 18
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":75,"12":76,"13":77,"14":78,"15":79,"16":80,"17":81,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":1263159624,"3":1330531660,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 17
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":75,"12":76,"13":77,"14":78,"15":79,"16":80,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":1263159624,"3":1330531660,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 16
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":75,"12":76,"13":77,"14":78,"15":79,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":1263159624,"3":1330531660,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 15
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":75,"12":76,"13":77,"14":78,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":1263159624,"3":0,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 14
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":75,"12":76,"13":77,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":1263159624,"3":0,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 13
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":75,"12":76,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":1263159624,"3":0,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 12
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":75,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":1263159624,"3":0,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 11
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":74,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":0,"3":0,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 10
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":73,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":0,"3":0,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 9
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":72,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":0,"3":0,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 8
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":71,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":71},{"0":1128415552,"1":1195787588,"2":0,"3":0,"4":0},{"0":1195787588}]
+[null,{type:"Buffer",data:[67,68]},null,null,|424344454647|,null,|44454647|]
 resize to 7
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,null,null,null]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":70,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":70,"5":0},{"0":1128415552,"1":0,"2":0,"3":0,"4":0},{"0":0}]
+[null,{type:"Buffer",data:[67,68]},null,null,null,null,null]
 resize to 6
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,null,null,null]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":69,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":69,"4":0,"5":0},{"0":1128415552,"1":0,"2":0,"3":0,"4":0},{"0":0}]
+[null,{type:"Buffer",data:[67,68]},null,null,null,null,null]
 resize to 5
-[null,null,{"type":"Buffer","data":[67,68]},null,null,null,null,null]
-[null,null,{type:"Buffer",data:[67,68]},null,null,null,null,null]
+[null,{"type":"Buffer","data":[67,68]},{},{"0":64,"1":65,"2":66,"3":67,"4":68,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":68,"3":0,"4":0,"5":0},{"0":1128415552,"1":0,"2":0,"3":0,"4":0},{"0":0}]
+[null,{type:"Buffer",data:[67,68]},null,null,null,null,null]
 resize to 4
-[null,null,null,null,null,null,null,null]
-[null,null,null,null,null,null,null,null]
+[null,null,{},{"0":64,"1":65,"2":66,"3":67,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":67,"2":0,"3":0,"4":0,"5":0},{"0":1128415552,"1":0,"2":0,"3":0,"4":0},{"0":0}]
+[null,null,null,null,null,null,null]
 resize to 3
-[null,null,null,null,null,null,null,null]
-[null,null,null,null,null,null,null,null]
+[null,null,{},{"0":64,"1":65,"2":66,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":66,"1":0,"2":0,"3":0,"4":0,"5":0},{"0":0,"1":0,"2":0,"3":0,"4":0},{"0":0}]
+[null,null,null,null,null,null,null]
 resize to 2
-[null,null,null,null,null,null,null,null]
-[null,null,null,null,null,null,null,null]
+[null,null,{},{"0":64,"1":65,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0},{"0":0,"1":0,"2":0,"3":0,"4":0},{"0":0}]
+[null,null,null,null,null,null,null]
 resize to 1
-[null,null,null,null,null,null,null,null]
-[null,null,null,null,null,null,null,null]
+[null,null,{},{"0":64,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0},{"0":0,"1":0,"2":0,"3":0,"4":0},{"0":0}]
+[null,null,null,null,null,null,null]
 resize to 0
-[null,null,null,null,null,null,null,null]
-[null,null,null,null,null,null,null,null]
+[null,null,{},{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0},{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0},{"0":0,"1":0,"2":0,"3":0,"4":0},{"0":0}]
+[null,null,null,null,null,null,null]
 final top: 2
 ==> rc=0, result='undefined'
 ===*/
 
-static duk_ret_t test_json_serialize_1(duk_context *ctx) {
+static duk_ret_t test_json_serialize_1(duk_context *ctx, void *udata) {
 	unsigned char *data;
 	int i;
 	duk_uarridx_t arridx = 0;
+
+	(void) udata;
 
 	data = (unsigned char *) duk_push_dynamic_buffer(ctx, 20);
 	for (i = 0; i < 20; i++) {
@@ -652,8 +638,6 @@ static duk_ret_t test_json_serialize_1(duk_context *ctx) {
 	}
 
 	duk_push_array(ctx);  /* index 1 */
-	setup_duktape_buffer(ctx, 0);
-	duk_put_prop_index(ctx, 1, arridx++);
 	setup_nodejs_buffer(ctx, 0);
 	duk_put_prop_index(ctx, 1, arridx++);
 	setup_nodejs_buffer_slice(ctx, 0, 3, 5);
@@ -717,9 +701,11 @@ final top: 2
 ==> rc=0, result='undefined'
 ===*/
 
-static duk_ret_t test_typedarray_constructor_copy_1(duk_context *ctx) {
+static duk_ret_t test_typedarray_constructor_copy_1(duk_context *ctx, void *udata) {
 	int i;
 	unsigned char *data;
+
+	(void) udata;
 
 	data = (unsigned char *) duk_push_dynamic_buffer(ctx, 10);  /* index 0 */
 	for (i = 0; i < 10; i++) {
@@ -1050,9 +1036,11 @@ final top: 6
 ==> rc=0, result='undefined'
 ===*/
 
-static duk_ret_t test_typedarray_set_1(duk_context *ctx) {
+static duk_ret_t test_typedarray_set_1(duk_context *ctx, void *udata) {
 	int i, dst, src;
 	unsigned char *data;
+
+	(void) udata;
 
 	data = (unsigned char *) duk_push_dynamic_buffer(ctx, 10);  /* index 0 */
 	for (i = 0; i < 10; i++) {
@@ -1457,9 +1445,11 @@ final top: 5
 ==> rc=0, result='undefined'
 ===*/
 
-static int test_nodejs_buffer_compare_1(duk_context *ctx) {
+static duk_ret_t test_nodejs_buffer_compare_1(duk_context *ctx, void *udata) {
 	int i, dst, src;
 	unsigned char *data;
+
+	(void) udata;
 
 	/* There are two relevant methods: Buffer.compare and Buffer.prototype.compare() */
 
@@ -1677,9 +1667,11 @@ final top: 9
 ==> rc=0, result='undefined'
 ===*/
 
-static int test_nodejs_buffer_write_1(duk_context *ctx) {
+static duk_ret_t test_nodejs_buffer_write_1(duk_context *ctx, void *udata) {
 	int i, dst, src;
 	unsigned char *data;
+
+	(void) udata;
 
 	data = (unsigned char *) duk_push_dynamic_buffer(ctx, 10);  /* index 0 */
 	for (i = 0; i < 10; i++) {
@@ -1907,9 +1899,11 @@ final top: 5
 ==> rc=0, result='undefined'
 ===*/
 
-static int test_nodejs_buffer_copy_1(duk_context *ctx) {
+static duk_ret_t test_nodejs_buffer_copy_1(duk_context *ctx, void *udata) {
 	int i, dst, src;
 	unsigned char *data;
+
+	(void) udata;
 
 	data = (unsigned char *) duk_push_dynamic_buffer(ctx, 10);  /* index 0 */
 	for (i = 0; i < 10; i++) {
@@ -1981,9 +1975,11 @@ final top: 6
 ==> rc=0, result='undefined'
 ===*/
 
-static int test_nodejs_buffer_concat_1(duk_context *ctx) {
+static duk_ret_t test_nodejs_buffer_concat_1(duk_context *ctx, void *udata) {
 	int i;
 	unsigned char *data;
+
+	(void) udata;
 
 	data = (unsigned char *) duk_push_dynamic_buffer(ctx, 10);  /* index 0 */
 	for (i = 0; i < 10; i++) {
@@ -2020,7 +2016,6 @@ static int test_nodejs_buffer_concat_1(duk_context *ctx) {
 
 void test(duk_context *ctx) {
 	/* Indexed read/write */
-	TEST_SAFE_CALL(test_duktape_buffer_indexed_1a);
 	TEST_SAFE_CALL(test_nodejs_buffer_indexed_1a);
 	TEST_SAFE_CALL(test_nodejs_buffer_indexed_1b);
 	TEST_SAFE_CALL(test_arraybuffer_indexed_1a);

@@ -9,22 +9,7 @@
 ---*/
 
 /*===
-for-in: 0
-for-in: 1
-for-in: 2
-for-in: 3
-for-in: 4
-for-in: 5
-for-in: 6
-for-in: 7
-Object.keys: 0
-Object.keys: 1
-Object.keys: 2
-Object.keys: 3
-Object.keys: 4
-Object.keys: 5
-Object.keys: 6
-Object.keys: 7
+0
 Object.getOwnPropertyNames: 0
 Object.getOwnPropertyNames: 1
 Object.getOwnPropertyNames: 2
@@ -42,6 +27,10 @@ Object.getOwnPropertyNames: BYTES_PER_ELEMENT
 function arrayBufferEnumTest() {
     var buf = new ArrayBuffer(8);
 
+    // The ArrayBuffer index keys are non-standard and they can be read/written.
+    // However, the keys don't enumerate or JSON serialize.
+    print(buf[0]);
+
     for (var k in buf) {
         print('for-in:', k);
     }
@@ -50,6 +39,8 @@ function arrayBufferEnumTest() {
         print('Object.keys:', k);
     });
 
+    // The index keys (and other non-enumerated keys) are included in
+    // Object.getOwnPropertyNames() output.
     Object.getOwnPropertyNames(buf).forEach(function (k) {
         print('Object.getOwnPropertyNames:', k);
     });

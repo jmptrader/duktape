@@ -2,9 +2,6 @@
 Duktape debugger
 ================
 
-**The debugger support is currently experimental, i.e. may change in an
-incompatible way even in a minor release.**
-
 Introduction
 ============
 
@@ -13,18 +10,24 @@ Overview
 
 Duktape provides the following basic debugging features:
 
-* Execution status: running/paused at file/line, call stack, local variables
+* Execution status: running/paused at file/line, callstack, local variables
 
 * Execution control: pause, resume, step over, step into, step out
 
 * Breakpoints: file/line pair targeted breakpoint list, "debugger" statement
 
-* Eval in the context of the current activation when paused (can be used
-  to implement basic watch expressions)
+* Eval in the context of any activation on the callstack when paused (can be
+  used to implement basic watch expressions)
 
-* Get/put variable
+* Inspecting heap objects by enumerating internal metadata, properties, and
+  walking prototype chains
 
-* Forwarding of print(), alert(), and logger writes
+* Get/put variable at any callstack level
+
+* A mechanism for application-defined requests (AppRequest) and notifications
+  (AppNotify)
+
+* Forwarding of logger writes
 
 * Full heap dump (debugger web UI converts to JSON)
 
@@ -40,7 +43,8 @@ Duktape debugging architecture is based on the following major pieces:
   debug protocol endpoint and provides a user interface.
 
 * An optional **JSON debug protocol proxy** which provides an easier
-  JSON-based interface for talking to the debug target.
+  JSON-based interface for talking to the debug target.  Example proxy
+  implementations written in Node.js and DukLuv are included with Duktape.
 
 This document describes these pieces in detail.
 
@@ -56,20 +60,18 @@ Getting started: debugging your target
 
 To integrate debugger support into your target, you need to:
 
-* **Check your feature options**: define ``DUK_OPT_DEBUGGER_SUPPORT`` and
-  ``DUK_OPT_INTERRUPT_COUNTER`` to enable debugger support in Duktape.
-  Also consider other debugging related feature options, like forwarding
-  built-in ``print()``/``alert()`` calls (``DUK_OPT_DEBUGGER_FWD_PRINTALERT``)
-  and logging (``DUK_OPT_DEBUGGER_FWD_LOGGING``) to the debug client.
+* **Check your config options**: enable ``DUK_USE_DEBUGGER_SUPPORT`` and
+  ``DUK_USE_INTERRUPT_COUNTER`` to enable debugger support in Duktape.
+  Also consider other debugging related config options.
 
 * **Implement a concrete stream transport mechanism**: needed for both the
   target device and the Duktape debugger.  The best transport depends on the
   target, e.g. a TCP socket, a serial link, or embedding debug data in an
   existing custom protocol.  An example TCP debug transport is given in
-  ``examples/debug-trans-socket/duk_trans_socket.c``.
+  ``examples/debug-trans-socket/duk_trans_socket_unix.c``.
 
-* **Add code to attach a debugger**: call ``duk_debugger_attach()`` when it is
-  time to start debugging.  Duktape will pause execution and process debug
+* **Add code to attach a debugger**: call ``duk_debugger_attach()`` when it
+  is time to start debugging.  Duktape will pause execution and process debug
   messages (blocking if necessary).  Execution resumes under control of the
   debug client.
 
@@ -79,9 +81,14 @@ To integrate debugger support into your target, you need to:
   etc.  (A detach can also occur if explicitly requested by the debug client
   or if Duktape detects a debug stream error.)
 
-* **If you have an eventloop**: optionally call ``duk_debugger_cooperate()``
+* **If you have an event loop**: optionally call ``duk_debugger_cooperate()``
   once in a while when no call to Duktape is in progress.  This allows debug
   commands to be executed outside of any Duktape calls.
+
+Duktape comes with a bundled debug client which supports a plain TCP transport.
+There are also several third party debug clients which may be adapted to talk
+to your target: they share the same debug protocol so only the transport will
+need adaptation.
 
 You can also write your own debug client by implementing the client side of
 the debug protocol.  The debug client is intended to adapt to the target
@@ -92,8 +99,8 @@ with the same semantic versioning principles as the Duktape API.
 You can implement the binary debug protocol directly in your debug client,
 but an easier option is to use the JSON mapping of the debug protocol which
 is much more user friendly.  Duktape includes a proxy server which converts
-between the JSON mapping and the binary debug protocol (which actually runs
-on the target).
+between the JSON mapping and the binary debug protocol which actually runs
+on the target.
 
 Example debug client and server
 -------------------------------
@@ -108,7 +115,7 @@ debug transport.
 The example debugger stuff includes:
 
 * Duktape command line tool ``--debugger`` option which is enabled by using
-  both ``DUK_CMDLINE_DEBUGGER_SUPPORT`` and ``DUK_OPT_DEBUGGER_SUPPORT``.
+  both ``DUK_CMDLINE_DEBUGGER_SUPPORT`` and ``DUK_USE_DEBUGGER_SUPPORT``.
   The command line tool uses a TCP socket based example transport provided
   in ``examples/debug-trans-socket/``.
 
@@ -142,7 +149,8 @@ A standard debug transport
 
 This is up to user code, because the most appropriate transport varies a great
 deal: Wi-Fi, serial port, etc.  However, TCP is probably a good default
-transport if there are no specific reasons not to use it.
+transport if there are no specific reasons not to use it.  The bundled
+example debugger web UI and JSON debug proxy use TCP as a transport.
 
 A standard debugger UI
 ::::::::::::::::::::::
@@ -183,7 +191,8 @@ every bytecode instruction.
 Code footprint
 --------------
 
-Debugger support increases footprint by around 10kB.
+Debugger support increases footprint by around 15-20 kB, depending on
+debugger features enabled.
 
 Memory footprint
 ----------------
@@ -201,6 +210,19 @@ Otherwise memory footprint should be negligible.  Duktape doesn't need to
 maintain any debug message buffering because all debug data is streamed in
 and out.
 
+Security
+--------
+
+The debug commands available via the debugger protocol can be (mis)used to
+trigger potentially exploitable memory unsafe behavior.  For example, the
+debug client may read/write from/to fabricated pointers which has a wide
+potential for exploits.
+
+When this is a relevant security concern, the debug transport should provide
+authentication, encryption, and integrity protection.  For example, a mutually
+certificate authenticated TLS connection can be used.  Duktape itself doesn't
+provide any security measures beyond what is provided by the transport.
+
 Debug API
 =========
 
@@ -215,11 +237,13 @@ Called when the application wants to attach a debugger to the Duktape heap::
                         my_trans_peek_cb,         /* peek callback (optional) */
                         my_trans_read_flush_cb,   /* read flush callback (optional) */
                         my_trans_write_flush_cb,  /* write flush callback (optional) */
+                        my_request_cb,            /* app request callback (optional) */
                         my_detached_cb,           /* debugger detached callback */
                         my_udata);                /* debug udata */
 
 When called, Duktape will enter debug mode, pause execution, and wait for
-further instructions from the debug client.
+further instructions from the debug client.  If Duktape debugger support is
+not enabled, an error is thrown.
 
 The transport callbacks are given as part of the start request.  Duktape
 expects a new virtual stream for every debug start/stop cycle, and will
@@ -230,7 +254,14 @@ The detached callback is called when the debugger becomes detached.  This
 can happen due to an explicit request (``duk_debugger_detach()``), a debug
 message/transport error, or Duktape heap destruction.
 
-If Duktape debugger support is not enabled, an error is thrown.
+Unless explicitly mentioned in the API documentation, none of the callbacks
+are allowed to call into the Duktape API (this is also the reason why they
+mostly don't get a ``ctx`` argument); doing so may cause memory unsafe
+behavior.  As a concrete example, if a user read callback calls into the
+Duktape API during a read operation, the API call may trigger garbage
+collection.  Because garbage collection may have arbitrary side effects,
+the debugger command in progress (implemented in ``src-input/duk_debugger.c``)
+may then break in a very confusing manner.
 
 duk_debugger_detach()
 ---------------------
@@ -299,6 +330,41 @@ blocking), you can also use it like this::
         }
         /*...*/
     }
+
+duk_debugger_pause()
+--------------------
+
+The target may call this at any time to request Ecmascript execution to be
+paused, and control to be turned over to an attached debug client::
+
+    duk_debugger_pause(ctx);
+
+The call returns without blocking; the requested pause may not happen
+immediately but will take place on the next bytecode opcode dispatch.
+See the API documentation for more details.
+
+A common use case for this call is to bind it to a hotkey, which allows the
+user to break out of and debug infinite loops.  However, like all Duktape API
+calls, the call is not thread safe and must be called from the same thread used
+to run the Ecmascript code being debugged.
+
+duk_debugger_notify()
+---------------------
+
+Optional call to send application specific notifications through the debug
+transport::
+
+    duk_bool_t sent;
+
+    duk_push_string(ctx, "BatteryLevel");
+    duk_push_uint(ctx, 130);  /* 130 of 1000 */
+    sent = duk_debugger_notify(ctx, 2 /*nvalues*/);
+    /* 'sent' indicates whether notify was successfully sent or not */
+
+The call returns 0 and is effectively ignored when debugger support is not
+compiled in, or when the debugger is not attached.
+
+See "Custom requests and notifications" below for more details.
 
 Debug transport
 ===============
@@ -546,7 +612,7 @@ This topic is covered in a separate section.
 Development time transport torture option
 -----------------------------------------
 
-The feature option DUK_OPT_DEBUGGER_TRANSPORT_TORTURE causes Duktape to do
+The config option DUK_USE_DEBUGGER_TRANSPORT_TORTURE causes Duktape to do
 all debug transport read/write operations in 1-byte steps, which is useful
 to catch any incorrect assumptions about reading or writing chunks of a
 certain size.
@@ -589,15 +655,15 @@ as an UTF-8 encoded line of the form::
 
     <protocolversion> <SP (0x20)> <additional text, no LF> <LF (0x0a)>
 
-The current protocol version is "1" and the identification line currently
+The current protocol version is "2" and the identification line currently
 has the form::
 
-    1 <DUK_VERSION> <DUK_GIT_DESCRIBE> <target string> <LF>
+    2 <DUK_VERSION> <DUK_GIT_DESCRIBE> <target string> <LF>
 
 Everything that follows the protocol version number is informative only.
 Example::
 
-    1 10099 v1.0.0-254-g2459e88 duk command built from Duktape repo
+    2 20000 v2.0.0 duk command built from Duktape repo
 
 The debug protocol version is available as a define to the user code
 (defined by ``duktape.h``)::
@@ -688,9 +754,10 @@ some cases:
 |                       |           | length in network order and buffer    |
 |                       |           | data follows initial byte             |
 +-----------------------+-----------+---------------------------------------+
-| 0x15                  | unused    | Represents the internal "undefined    |
-|                       |           | unused" type which used to e.g. mark  |
-|                       |           | unused (unmapped) array entries       |
+| 0x15                  | unused    | Represents an unused/none value, used |
+|                       |           | internally to mark unmapped array     |
+|                       |           | entries and in the debugger protocol  |
+|                       |           | to indicate a "none" result           |
 +-----------------------+-----------+---------------------------------------+
 | 0x16                  | undefined | Ecmascript "undefined"                |
 +-----------------------+-----------+---------------------------------------+
@@ -744,11 +811,13 @@ types in the text)::
     REP
     ERR
     NFY
-    <int: field name>    e.g. <int: error code>
-    <str: field name>    e.g. <str: error message>
-    <buf: field name>    e.g. <buf: buffer data>
-    <ptr: field name>    e.g. <ptr: prototype pointer>
-    <tval: field name>   e.g. <tval: eval result>
+    <int: field name>      e.g. <int: error code>
+    <str: field name>      e.g. <str: error message>
+    <buf: field name>      e.g. <buf: buffer data>
+    <ptr: field name>      e.g. <ptr: prototype pointer>
+    <tval: field name>     e.g. <tval: eval result>
+    <obj: field name>      e.g. <obj: target>
+    <heapptr: field name>  e.g. <heapptr: target>
 
 When a field does not relate to an Ecmascript value exactly, e.g. the field
 is a debugger control field, typing can be loose.  For example, a boolean
@@ -809,9 +878,17 @@ Notes:
   debugger protocol.
 
 * Plain buffer values are represented explicitly, but buffer objects
-  (Duktape.Buffer, Node.js Buffer, ArrayBuffer, DataView, and TypedArray
-  views) are represented as objects.  This means that their contents are
-  not transmitted, only their heap pointer and a class number.
+  (Node.js Buffer, ArrayBuffer, DataView, and TypedArray views) are
+  represented as objects.  This means that their contents are not
+  transmitted, only their heap pointer and a class number.
+
+* The "unused" value is special: it's used internally by Duktape to mark
+  unmapped array entries, but is not intended to be used for actual values
+  (entries on the value stack, property values, etc).  The "unused" value
+  is used in the debugger protocol to denote a missing/none value in some
+  command replies.  It's not used in requests, so the debug client should
+  never send an "unused" dvalue in a request (e.g. PutVar); Duktape will
+  reject such a request as having a format error.
 
 Endianness
 ----------
@@ -914,6 +991,8 @@ Error codes
 | 0x02   | Too many (e.g. too many breakpoints, cannot add new)             |
 +--------+------------------------------------------------------------------+
 | 0x03   | Not found (e.g. invalid breakpoint index)                        |
++--------+------------------------------------------------------------------+
+| 0x04   | Application error (e.g. AppRequest-related error)                |
 +--------+------------------------------------------------------------------+
 
 Handling of inbound requests
@@ -1037,6 +1116,22 @@ JSON representation of dvalues
       // (here Math.PI)
       { "type": "number", "data": "400921fb54442d18" }
 
+  The object may also contain an optional ``value`` field which provides the
+  number as a JSON compatible approximate value.  Some accuracy may be lost
+  compared to the raw IEEE double, e.g. fraction digits or zero sign may be
+  lost.  The value may also be ``null`` for NaN/infinity so that writing code
+  can simply rely on ``JSON.stringify()`` to encode the value.  Example::
+
+      // 4.5
+      { "type": "number", "data": "4012000000000000", "value": 4.5 }
+
+      // +Infinity
+      { "type": "number", "data": "7ff0000000000000", "value": null }
+
+  **IMPORTANT**: the ``value`` key must not be machine processed and is only
+  present to make it easier to read JSON protocol text directly.  Parsing code
+  must always ignore it and use ``data`` instead.
+
 * Strings are mapped like in the text representation, i.e. bytes 0x00...0xff
   map to Unicode codepoints U+0000...U+00FF::
 
@@ -1088,18 +1183,44 @@ JSON representation of debug messages
 Messages are represented as JSON objects, with the message type marker and the
 EOM marker removed, as follows.
 
-Request messages have a 'request' key which contains the command name (if
-known) or "true" (if not known), a 'command' key which contains the command
-number, and 'args' which contains remaining dvalues (EOM omitted)::
+Request messages specify the command using a 'request' key and an 'args' array
+containing a list of dvalues (EOM omitted)::
 
     {
         "request": "AddBreak",
+        "args": [ "foo.js", 123 ]
+    }
+
+The 'args' argument is optional; if it's missing, it's treated the same as an
+empty array::
+
+    {
+        "request": "AddBreak"
+    }
+
+Usually debug commands are specific as strings, with the proxy automatically
+mapping the string into a command number using debugger metadata.  You can
+specify the command number explicitly and even specify both::
+
+    // Explicit command number (e.g. metadata doesn't know custom command).
+    {
+        "request": 24,
+        "args": [ "foo.js", 123 ]
+    }
+
+    // Equivalent, this is a form used earlier (above form preferred).
+    {
+        "request": true,
         "command": 24,
         "args": [ "foo.js", 123 ]
     }
 
+    // You can also give command name in 'request' and a fallback numeric
+    // command in 'command'.  If the command name cannot be resolved via
+    // command metadata, the command number in 'command' will then (and only
+    // then) be used.
     {
-        "request": true,
+        "request": "AddBreak",
         "command": 24,
         "args": [ "foo.js", 123 ]
     }
@@ -1121,13 +1242,19 @@ contain the error arguments (EOM omitted)::
         "args": [ 2, "no space for breakpoint" ]
     }
 
-Notify messages have a 'notify' key with the notify command name (if known)
-or "true" (if not known), a 'command' key which contains the command number,
-and an 'args' for arguments (EOM omitted)::
+Notify messages have the same form as requests, but the 'request' key is
+replaced with 'notify'::
 
     {
         "notify": "Status",
-        "command": 1,
+        "args": [ 0, "foo.js", "frob", 123, 808 ]
+    }
+
+Alternative forms for specifying the notify command number are also available
+for notifies::
+
+    {
+        "notify": 1,
         "args": [ 0, "foo.js", "frob", 123, 808 ]
     }
 
@@ -1137,19 +1264,28 @@ and an 'args' for arguments (EOM omitted)::
         "args": [ 0, "foo.js", "frob", 123, 808 ]
     }
 
+    {
+        "notify": "Status",
+        "command": 1,
+        "args": [ 0, "foo.js", "frob", 123, 808 ]
+    }
+
 If an argument list is empty, 'args' can be omitted from any message.
 
 The request and notify message contain both a request/notify command name and
-a number.  The intent is to allow debug clients to use command names (rather
-than numbers).  The command name/number is resolved as follows:
+a number, and several forms are supported.  The command name/number is resolved
+as follows:
 
-* If command name is present, look up the command name from command metadata.
-  If the command is known, use the command number in the command metadata and
-  ignore a possible 'command' key.
+* If 'request' / 'notify' provides the command name as a string, look up the
+  command from command metadata.  If the command is known, use the command number
+  in the command metadata (ignore a possible 'command' key).
 
-* If command number is present, use it verbatim if the name lookup failed.
+* If 'request' / 'notify' provides the command number, use that as is.
 
-* If no command number is present, fail.
+* If 'command' provides the command number, use that as is.  The 'request' or
+  'notify' may also be present with a ``true`` value, and is ignored.
+
+* If the above steps fail, the request / notify cannot be processed.
 
 Other JSON messages
 -------------------
@@ -1157,27 +1293,48 @@ Other JSON messages
 In addition to the core message formats above, there are a few custom messages
 for debug protocol version info and transport events.  These are expressed as
 "notify" messages with a special command name beginning with an underscore, and
-no command number.
+no command number.  These are mostly to improve human readability, and minor
+details may change as needed.
 
-When connecting to a debug target, a version identification line is received.
-This line doesn't follow the dvalue format, so it is transmitted specially::
+When connection to the target is attempted a notify like this can be sent::
 
     {
-        "notify": "_Connected",
+        "notify": "_TargetConnecting",
+        "args": [ "1.2.3.4", 9091 ]
+    }
+
+When connected to the target, version identification is relayed verbatim::
+
+    {
+        "notify": "_TargetConnected",
         "args": [ "1 10199 v1.1.0-173-gecd806e-dirty duk command built from Duktape repo" ]
     }
 
-When a transport error occurs (not necessarily a terminal error)::
+When the target disconnects::
+
+    {
+        "notify": "_TargetDisconnected"
+    }
+
+When a transport error occurs (not necessarily a terminal error so may appear
+multiple times)::
 
     {
         "notify": "_Error",
         "args": [ "some kind of error" ]
     }
 
-When the JSON connection is just about to be disconnected::
+When the JSON proxy connection is just about to be disconnected::
 
     {
         "notify": "_Disconnecting"
+    }
+
+An optional reason argument can be included::
+
+    {
+        "notify": "_Disconnecting",
+        "args": [ "Target disconnected" ]
     }
 
 JSON protocol line formatting
@@ -1256,44 +1413,90 @@ The rate of Status updates is automatically rate limited using a Date-based
 timestamp, so that Status updates are sent at most every 200ms when Duktape
 is running in normal or checked mode.
 
-Print notification (0x02)
--------------------------
+Reserved (0x02)
+---------------
 
-Format::
+(Removed in Duktape 2.0.0, Print notify in Duktape 1.x.)
 
-    NFY <int: 2> <str: message> EOM
+Reserved (0x03)
+---------------
 
-Example::
-
-    NFY 2 "hello world!\n" EOM
-
-String output redirected from the ``print()`` function.
-
-Alert notification (0x03)
--------------------------
-
-Format::
-
-    NFY <int: 3> <str: message> EOM
-
-Example::
-
-    NFY 3 "hello world!\n" EOM
-
-String output redirected from the ``alert()`` function.
+(Removed in Duktape 2.0.0, Alert notify in Duktape 1.x.)
 
 Log notification (0x04)
 -----------------------
 
+(Removed in Duktape 2.0.0, Log notify in Duktape 1.x.)
+
+Throw notification (0x05)
+-------------------------
+
 Format::
 
-    NFY <int: 4> <int: log level> <str: message> EOM
+    NFY <int: 5> <int: fatal> <str: msg> <str: filename> <int: linenumber> EOM
 
 Example::
 
-    NFY 4 2 "2014-12-07T23:46:27.796Z INF foo: hello world" EOM
+    NFY 5 1 "ReferenceError: identifier not defined" "pig.js" 812 EOM
 
-Logger output redirected from Duktape logger calls.
+Fatal is one of:
+
+* 0x00: caught
+* 0x01: fatal (uncaught)
+
+Duktape sends a Throw notification whenever an error is thrown, either by
+Duktape due to a runtime error or directly by Ecmascript code.
+
+msg is the string-coerced value being thrown.  Filename and line number are
+taken directly from the thrown object if it is an Error instance (after
+augmentation), otherwise these values are calculated from the bytecode
+executor state.
+
+Detaching notification (0x06)
+-----------------------------
+
+Format::
+
+    NFY <int: 6> <int: reason> [<str: msg>] EOM
+
+Example::
+
+    NFY 6 1 "error parsing dvalue" EOM
+
+Reason is one of:
+
+* 0x00: normal detach
+
+* 0x01: detaching due to stream error
+
+Duktape sends a Detaching notification when the debugger is detaching.  If the
+target drops the transport without the client seeing this notification, it can
+assume the connection was lost and react accordingly (for example by trying to
+reestablish the link).
+
+``msg`` is an optional string elaborating on the reason for the detach.  It may
+or may not be present depending on the nature of detachment.
+
+AppNotify notification (0x07)
+-----------------------------
+
+Format::
+
+    NFY <int: 0x07> [<tval>]* EOM
+
+Example::
+
+    NFY 7 "DebugPrint" "Everything is going according to plan!" EOM
+
+This is a custom notification message whose meaning and semantics depend on the
+application.
+
+AppNotify messages are used for direct communication between the debug client
+and debug target over the Duktape debug protocol.  Both the meaning of a custom
+message and the dvalues it contains are entirely up to the implementation and
+depending on the needs of the application, need not be supported at all.
+
+See "Custom requests and notifications" below for more details.
 
 Commands sent by debug client
 =============================
@@ -1304,12 +1507,13 @@ BasicInfo request (0x10)
 Format::
 
     REQ <int: 0x10> EOM
-    REP <int: DUK_VERSION> <str: DUK_GIT_DESCRIBE> <str: target info> <int: endianness> EOM
+    REP <int: DUK_VERSION> <str: DUK_GIT_DESCRIBE> <str: target info>
+        <int: endianness> <int: sizeof(void *)> EOM
 
 Example::
 
     REQ 16 EOM
-    REP 10099 "v1.0.0-254-g2459e88" "Arduino Yun" 2 EOM
+    REP 10099 "v1.0.0-254-g2459e88" "Arduino Yun" 2 4 EOM
 
 Endianness:
 
@@ -1323,6 +1527,9 @@ Endianness affects decoding of a few dvalues.
 
 Target info is a string that can be compiled in, and can e.g. describe the
 device type.
+
+Void pointer size indicates pointer size used for pointer-related values.
+Note that function pointers may have a different size.
 
 TriggerStatus request (0x11)
 ----------------------------
@@ -1482,7 +1689,7 @@ GetVar request (0x1a)
 
 Format::
 
-    REQ <int: 0x1a> <str: varname> EOM
+    REQ <int: 0x1a> <str: varname> [<int: level>] EOM
     REP <int: 0/1, found> <tval: value> EOM
 
 Example::
@@ -1490,18 +1697,26 @@ Example::
     REQ 26 "testVar" EOM
     REP 1 "myValue" EOM
 
+Level specifies the callstack depth, where -1 is the topmost (current) function,
+-2 is the calling function, etc.  If not provided, the topmost function will be
+used.
+
 PutVar request (0x1b)
 ---------------------
 
 Format::
 
-    REQ <int: 0x1b> <str: varname> <tval: value> EOM
+    REQ <int: 0x1b> <str: varname> <tval: value> [<int: level>] EOM
     REP EOM
 
 Example::
 
     REQ 27 "testVar" "newValue" EOM
     REP EOM
+
+Level specifies the callstack depth, where -1 is the topmost (current) function,
+-2 is the calling function, etc.  If not provided, the topmost function will be
+used.
 
 GetCallStack request (0x1c)
 ---------------------------
@@ -1516,12 +1731,14 @@ Example::
     REQ 28 EOM
     REP "foo.js" "doStuff" 100 317 "bar.js" "doOtherStuff" 210 880 EOM
 
+List callstack entries from top to bottom.
+
 GetLocals request (0x1d)
 ------------------------
 
 Format::
 
-    REQ <int: 0x1d> EOM
+    REQ <int: 0x1d> [<int: level>] EOM
     REP [ <str: varName> <tval: varValue> ]* EOM
 
 Example::
@@ -1529,7 +1746,10 @@ Example::
     REQ 29 EOM
     REP "x" "1" "y" "3.1415" "foo" "bar" EOM
 
-List local variable names from current function (the internal ``_Varmap``).
+List local variable names from specified activation (the internal ``_Varmap``).
+Level specifies the callstack depth, where -1 is the topmost (current) function,
+-2 is the calling function, etc.  If not provided, the topmost function will be
+used.
 
 The result includes only local variables declared with ``var`` and locally
 declared functions.  Variables outside the current function scope, including
@@ -1545,7 +1765,7 @@ Eval request (0x1e)
 
 Format::
 
-    REQ <int: 0x1e> <str: expression> EOM
+    REQ <int: 0x1e> <str: expression> [<int: level>] EOM
     REP <int: 0=success, 1=error> <tval: value> EOM
 
 Example::
@@ -1553,10 +1773,17 @@ Example::
     REQ 30 "1+2" EOM
     REP 0 3 EOM
 
+Level specifies the callstack depth, where -1 is the topmost (current) function,
+-2 is the calling function, etc.  If not provided, the topmost function will be
+used (as with a real ``eval()``).  The level affects only the lexical scope of
+the code evaluated.  The callstack will be intact, and will be visible in e.g.
+stack traces and ``Duktape.act()``.
+
 The eval expression is evaluated as if a "direct call" to eval was executed
-in the position where execution has paused.  A direct eval call shares the
-same lexical scope as the function it is called from (an indirect eval call
-does not).  For instance, suppose we're executing::
+in the position where execution has paused, in the lexical scope specified by
+the provided callstack index.  A direct eval call shares the same lexical scope
+as the function it is called from (an indirect eval call does not).  For
+instance, suppose we're executing::
 
     function foo(x, y) {
         print(x);  // (A)
@@ -1639,26 +1866,632 @@ dump of the heap state for analysis.
    to implement a heap browser, and will probably be completed together with
    some kind of UI.
 
+.. note:: The dump format may potentially change to leverage GetHeapObjInfo
+   to read details of individual heap objects.  This command would then simply
+   provide a list of objects the debug client can inspect on its own.
+
 GetBytecode request (0x21)
 --------------------------
 
 Format::
 
-    REQ <int: 0x21> EOM
+    REQ <int: 0x21> [<int: level> OR <obj: target> OR <heapptr: target>] EOM
     REP <int: numconsts> (<tval: const>){numconsts}
         <int: numfuncs> (<tval: func>){numfuncs}
         <str: bytecode> EOM
 
-Example::
+Example without argument, gets bytecode for current function::
 
     REQ 33 EOM
     REP 2 "foo" "bar" 0  "...bytecode..." EOM
 
-Bytecode endianness is target specific so the debug client needs to get
-target endianness and interpret the bytecode based on that.
+Callstack level can be given explicitly, for example -3 is the third callstack
+level counting from callstack top::
+
+    REQ 33 -3 EOM
+    REP 2 "foo" "bar" 0  "...bytecode..." EOM
+
+An explicit Ecmascript function object can also be given using an "object" or
+"heapptr" dvalue::
+
+    REQ 33 {"type":"object","class":6,"pointer":"00000000014839e0"} EOM
+    REP 2 "foo" "bar" 0  "...bytecode..." EOM
+
+An error reply is returned if:
+
+* The argument exists but has an invalid type or points to a target value
+  which is not an Ecmascript function.
+
+* Callstack entry doesn't exist or isn't an Ecmascript activation.
+
+Notes:
+
+* Bytecode endianness is target specific so the debug client needs to get
+  target endianness and interpret the bytecode based on that.
+
+* Minor change from Duktape 1.4.0: when the callstack entry doesn't exist
+  Duktape 1.5.x and above will return an error rather than an empty result.
 
 .. note:: This command is somewhat incomplete at the moment and may be modified
    once the best way to do this in the debugger UI has been figured out.
+
+.. note:: This command may be removed in favor of using GetHeapObjInfo to
+   get the same bytecode information.
+
+AppRequest request (0x22)
+-------------------------
+
+Format::
+
+    REQ <int: 0x22> [<tval>*] EOM
+    REP [<tval>*] EOM
+
+Example::
+
+    REQ 34 "GameInfo" "GetTitle" EOM
+    REP "Spectacles: Bruce's Story" EOM
+
+If the target hasn't registered a request callback, Duktape responds::
+
+    ERR 2 "AppRequest unsupported by target" EOM
+
+The application request callback may also indicate an error, e.g.::
+
+    ERR 4 "missing argument for SetFrameRate"
+
+This is a custom request message whose meaning and semantics depend on the
+application.
+
+AppRequest messages are used for direct communication between the debug client
+and debug target over the Duktape debug protocol.  Both the meaning of a custom
+message and the dvalues it contains are entirely up to the implementation and
+depending on the needs of the application, need not be supported at all.
+
+See "Custom requests and notifications" below for more details.
+
+GetHeapObjInfo (0x23)
+---------------------
+
+Format::
+
+    REQ <int: 0x23> <tval: heapptr|object|pointer> EOM
+    REP [int: flags> <str/int: key> [<tval: value> OR <obj: getter> <obj: setter>]]* EOM
+
+Example::
+
+    REQ 35 { "type": "heapptr", "pointer": "deadbeef" } EOM
+    REP 0 "class_name" "ArrayBuffer" ... EOM
+
+Inspect a heap object using the provided heap pointer; any dvalue type
+containing a pointer is allowed: heapptr, object, pointer.  The debug client
+is responsible for ensuring that the pointer is safe, i.e. that the pointer
+is valid and the pointer target is still in the Duktape heap:
+
+* When the debugger is paused garbage collection is automatically disabled so
+  that any pointers obtained while the debugger remains paused are safe.  Once
+  execution is resumed using Resume or a step command, all pointers are
+  potentially invalidated by garbage collection.
+
+* When the debugger is not paused the debug client may safely inspect an
+  object if it's known with 100% certainty that the object is reachable and
+  therefore safe to inspect.  Because this is generally not a safe assumption,
+  you should avoid making it unless it's really necessary.
+
+* **WARNING**: Inspecting an unsafe pointer causes memory unsafe behavior and
+  may lead to crashes, etc.
+
+The result is a list of artificial property entries, each containing a flags
+field, a key, and a value.  See GetObjPropDesc for the shared format used.
+
+Artificial properties are not actually present in a property table but are
+generated based on e.g. ``duk_heaphdr`` flags and are string keyed to make
+versioning easier.  Artifical properties expose internal fields which may
+change between versions and are not part of version guarantees.  As a result
+the artificial property keys and/or values may change between versions.
+However, because the properties are string keyed it's relatively easy for the
+debug client to adapt to such changes.
+
+The current artificial keys are described in the section "Heap object
+inspection".
+
+GetObjPropDesc (0x24)
+---------------------
+
+Format::
+
+    REQ <int: 0x24> <obj: target> <str: key> EOM
+    REP <int: flags> <str/int: key> [<tval: value> OR <obj: getter> <obj: setter>] EOM
+
+Example::
+
+    REQ 36 { "type": "object", "class": 10, "pointer": "deadbeef" } "message" EOM
+    REP 7 "message" "Hello there!" EOM
+
+Inspect a property of an Ecmascript object using a specific string key
+without causing side effects such as getter calls or Proxy traps.  The
+result is either:
+
+* A property value using the format described below.
+
+* A "not found" error if the property doesn't exist.
+
+Properties stored in the internal "array part" are indexed using numeric
+string keys, e.g. ``"3"``, not integers.
+
+Proxy objects are inspected as is without invoking any traps.  The only
+properties usually available are the Duktape specific internal control
+properties indicating the target and the handler object with traps.  A Proxy
+object can be reliably detected using the artificial property ``exotic_proxyobj``
+returned by GetHeapObjInfo.
+
+See GetHeapObjInfo for notes about pointer safety.
+
+Each property entry is described using the following sequence of dvalues
+(this format is shared with other property related commands, including
+GetHeapObjInfo and GetObjPropDescRange):
+
+* Flags field
+
+  - A bit mask (described below)
+
+* Key
+
+  - Always a string, for array index properties convert index to canonical
+    index string (e.g. ``"3"``)
+
+* Property value:
+
+  - If property is not an accessor (apparent from flags field): single dvalue
+    representing a duk_tval
+
+  - If property is an accessor: two dvalues pointing to getter and setter
+    functions (respectively)
+
+The flags field is an unsigned integer bitmask with the following bits:
+
++---------+-----------------------------------------------------------------+
+| Bitmask | Description                                                     |
++=========+=================================================================+
+| 0x01    | Property attribute: writable, matches                           |
+|         | DUK_PROPDESC_FLAG_WRITABLE.                                     |
++---------+-----------------------------------------------------------------+
+| 0x02    | Property attribute: enumerable,                                 |
+|         | matches DUK_PROPDESC_FLAG_ENUMERABLE.                           |
++---------+-----------------------------------------------------------------+
+| 0x04    | Property attribute: configurable, matches                       |
+|         | DUK_PROPDESC_FLAG_CONFIGURABLE.                                 |
++---------+-----------------------------------------------------------------+
+| 0x08    | Property attribute: accessor, matches                           |
+|         | DUK_PROPDESC_FLAG_ACCESSOR.                                     |
++---------+-----------------------------------------------------------------+
+| 0x10    | Property is virtual, matches DUK_PROPDESC_FLAG_VIRTUAL.         |
++---------+-----------------------------------------------------------------+
+| 0x100   | Property is internal, and not visible to ordinary Ecmascript    |
+|         | code.  Currently set when initial key byte is 0xFF.             |
++---------+-----------------------------------------------------------------+
+
+For artificial properties (returned by GetHeapObjInfo) the property attributes
+are not relevant (sent as zero) and the value is currently never an accessor.
+
+GetObjPropDescRange (0x25)
+--------------------------
+
+Format::
+
+    REQ <int: 0x25> <obj: target> <int: idx_start> <int: idx_end> EOM
+    REP [int: flags> <str/int: key> [<tval: value> OR <obj: getter> <obj: setter>]]* EOM
+
+Example::
+
+    REQ 37 { "type": "object", "class": 10, "pointer": "deadbeef" } 0 2 EOM
+    REP 7 "name" "Example object" 7 "message" "Hello there!" EOM
+
+Inspect a range ``[idx_start,idx_end[`` of an Ecmascript object's "own"
+properties.  Result contains properties found; if the start/end index is
+larger than available property count those values will be missing from the
+result entirely.  For example, if the object has 3 properties and the range
+``[0,10[`` is requested, the result will contain 3 properties only.  If the
+indices are crossed (e.g. ``[10,5[``) an empty result is returned.
+
+The indices in the range ``[idx_start,idx_end[`` refer to a conceptual index
+space which is guaranteed to be stable as long as (1) execution is paused
+so that garbage collection is prevented, and (2) the object is not mutated.
+The property order within the index space has no specific guarantees and
+does not necessarily match enumeration order; the debug client should reorder
+the properties if a specific presentation order is needed.
+
+The current index space (which may change in future versions) contains:
+
+* The object's internal array part, indices ``[0,a_size[``.  Here ``a_size``
+  is the space allocated for the dense array part and may be larger than the
+  apparent ``.length`` property of the array.  Unmapped values and missing
+  array indices are returned as "unused" dvalues.
+
+* The object's internal entry part, indices ``[0,e_next[``.  The entry part
+  may contain deleted properties which are returned as "unused" dvalues.
+
+The debug client doesn't need to care about these details, and can simply read
+arbitrary ranges (even those spanning the two parts) provided that it correctly
+deals with "unused" values.
+
+The debug client can request all properties simply by requesting the index
+range ``[0,0x7fffffff[`` (signed indices for now).  The result will only contain
+as many properties as are actually present.
+
+The debug client can also iterate over the property set incrementally as
+follows:
+
+* Request index ranges in sequence, for example ``[0,10[``, ``[10,20[``, etc.
+
+* When a partial result (here less than 10 properties) is received, we're done.
+  Equivalent approach is to stop iterating when you get an entirely empty result.
+
+The properties included in the index space are the target object's "own"
+properties, without side effects:
+
+* Property attributes are provided in a flags field.  Internal properties,
+  currently implemented using keys starting with the 0xFF byte, are flagged
+  explicitly so that the debug client doesn't need to check the marker byte
+  (which may change in future versions) separately.
+
+* Accessor properties are described as is, as a setter/getter pair, without
+  invoking the getter.  The debug client can do that explicitly if it so
+  desires.
+
+* Inherited properties are not enumerated.  The debug client can walk the
+  prototype chain manually by looking up the ``prototype`` artificial
+  property and inspecting that object separately.  Prototype walking should
+  carefully avoid failing on a prototype loop.
+
+* Some properties which are implemented in a fully virtualized fashion are
+  visible in Ecmascript enumeration but may not be visible in the inspection.
+  For example, String object has virtual index properties (0, 1, 2, ...) for
+  string characters, and these are not included in the inspection result at
+  the moment.  They can be read using GetObjPropDesc, however.
+
+* Proxy traps are not invoked, and the properties returned are the "own"
+  properties of the Proxy itself.  Typically the Proxy has only Duktape
+  specific internal control properties identifying the Proxy target and
+  handler table.
+
+Note that Array objects can be dense or sparse.  This distinction is internal:
+dense arrays have an array part where the array items are stored while sparse
+arrays don't have an array part and array items are stored in the main property
+table together with normal string keyed properties.  Array items for sparse
+arrays will thus appear as normal string keyed properties, and may not be in
+ascending index order; the debug client should always reorder properties to
+fit the preferred display order.  Array gaps may be visible either as missing
+keys or as keys with the dvalue "unused".  Currently gaps in sparse arrays
+will be visible as missing keys while gaps in dense arrays are visible as
+"unused" dvalues; the debug client should handle both cases.
+
+See GetHeapObjInfo for notes about pointer safety.
+
+Custom requests and notifications
+=================================
+
+Starting in Duktape 1.5.x, Duktape supports direct communication between the
+debug client and debug target over the same transport by using the special
+AppRequest and AppNotify messages.  These messages have no meaning to Duktape,
+which merely serves to marshal them back and forth through a defined API.
+
+AppNotify messages may be sent by pushing the contents of the message to the
+stack and calling ``duk_debugger_notify()`` passing the number of values
+pushed.  Each value pushed will be sent as a dvalue in the message.  So if you
+push two strings, "foo" and "bar", the client will see ``NFY 7 "foo" "bar" EOM``.
+
+AppRequest is used to make requests to the target which are not directly
+related to Ecmascript execution and may be implementation-dependent.  For
+example, an AppRequest might be used to:
+
+* Download source files directly from the debug target file system
+
+* Change the frame rate of a game engine
+
+* Reset/reboot an embedded target device while debugging
+
+* Perform or trigger software or script updates
+
+A target that wishes to support AppRequest should provide a request callback
+when calling ``duk_debugger_attach()``.  When an AppRequest is received, the
+request callback is invoked with the contents of the message on the value
+stack, and may push its own values to be sent in reply.  The request callback
+may block if necessary (for example, the callback might wait for a hardware
+button press).  Note, however, that Duktape will also be blocked while the
+callback executes which may not be desirable in some cases and may cause a
+debug client to time out (this of course depends entirely on the debug client).
+
+This is a minimal do-nothing request callback::
+
+    duk_idx_t duk_cb_debug_request(duk_context *ctx, void *udata, duk_idx_t nvalues) {
+        /* Number of return values is returned: here empty reply. */
+        return 0;
+    }
+
+The above dummy callback simply responds with ``REP EOM`` (an empty reply) to
+all requests.
+
+A more useful callback should process the values it receives on the value
+stack, push its own values to send in reply, and return a non-negative integer
+indicating how many values it pushed.  Here is a slightly more useful
+implementation::
+
+    duk_idx_t duk_cb_debug_request(duk_context *ctx, void *udata, duk_idx_t nvalues) {
+        const char *cmd_name = NULL;
+
+        /* Callback must be very careful NEVER to access values below
+         * 'nvalues' topmost value stack elements.
+         */
+        if (nvalues >= 1) {
+            /* Must access values relative to stack top. */
+            cmd_name = duk_get_string(ctx, -nvalues + 0);
+        }
+
+        if (cmd_name == NULL) {
+            /* Return -1 to send an ERR reply.  The value on top of the stack
+             * should be a string which will be used for the error text sent
+             * to the debug client.
+             */
+            duk_push_string(ctx, "missing application specific command name");
+            return -1;
+        } else if (strcmp(cmd_name, "VersionInfo") == 0) {
+            /* Return a positive integer to send a REP containing values pushed
+             * to the stack.  The return value indicates how many dvalues you
+             * are including in the response.
+             */
+            duk_push_string(ctx, "My Awesome Program");
+            duk_push_int(ctx, 81200);  /* ver. 8.12.0 */
+            return 2;  /* 2 dvalues */
+        } else {
+            duk_push_sprintf(ctx, "unrecognized application specific command name: %s",
+                             cmd_name);
+            return -1;
+        }
+    }
+
+If no request callback is provided at attach, AppRequest will be treated as an
+unsupported command, eliciting an ERR reply from Duktape saying so.  A target
+is always free to send AppNotify messages.
+
+As a precaution, the target should try to avoid sending structured values such
+as JS objects in notify messages as their heap pointers may become stale by
+the time the client receives and inspects them.  This is especially true for
+notifications sent while the target is running.  It's better to stick to
+primitives which have unique dvalue representations, e.g. numbers, booleans,
+and strings.  If a structured value does need to be sent, it can simply be
+e.g. JSON/JX encoded and sent as a string instead (carefully avoiding uncaught
+errors).
+
+Important notes on the request callback
+---------------------------------------
+
+The request callback is provided with a ``duk_context`` pointer with which it
+can access the value stack and is assumed to be trusted.  There are certain
+things it MUST NOT do.  Specifically:
+
+* It MUST NOT assume that ``nvalues`` has any specific value.  In particular
+  it might be zero so that there are no arguments to the callback (not even a
+  string used, by convention, to identify an application specific command).
+
+* It MUST NOT attempt to access or pop any values from the top of the stack
+  beyond the ``nvalues`` it is given and the values it pushes itself.
+
+* It MUST NOT assume any specific value for ``duk_get_top()`` and similar
+  primitives.  In practice this means using negative stack indices to access
+  values.
+
+* It MUST NOT throw errors.  It is very easy to accidentally throw an error
+  when working with value stack values directly, so caution must be exercised
+  here.
+
+Violating this contract is undefined behavior and may corrupt debugger state,
+cause incorrect behavior, or even lead to a segfault.  In the future it would
+be nice to make this more robust, e.g. by sandboxing the function so that it
+cannot access unrelated stack values and is allowed to throw errors safely.
+
+The dvalues of a message are pushed in the order they are received.  This makes
+them inconvenient to access using negative indices, since the relative position
+of any given value on the stack is dependent on the total number of values.
+However because the callback receives the total number of values as a parameter,
+a useful convention is to index the stack like so::
+
+    if (nvalues < 3) {
+        duk_push_string(ctx, "not enough arguments");
+        return -1;
+    }
+    cmd_name = duk_get_string(ctx, -nvalues + 0);
+    val_1 = duk_get_string(ctx, -nvalues + 1);
+    val_2 = duk_get_int(ctx, -nvalues + 2);
+
+AppRequest/AppNotify command format
+-----------------------------------
+
+As a general convention, it is recommended for the first field in an AppRequest
+or AppNotify message after the command number be a string identifying the
+command, e.g. "VersionInfo" or "RebootDevice".  This makes it simpler for
+different clients and targets to interoperate.  Unrecognized command names can
+simply be ignored, whereas, e.g. integer commands may be interpreted
+differently depending on the debug client and target in use.
+
+If a command is specific to your application in some way (purpose or behavior),
+it might make sense to add a prefix, e.g. "MyApp-AwesomeCmd".  This avoids
+clashes with other targets which may have similarly-named commands.
+
+Ultimately, no convention or overall form for application message contents is
+actually enforced by Duktape.  A peer should therefore not make any assumptions
+about the contents of an AppRequest or AppNotify message unless it knows
+exactly where that message came from.
+
+Heap object inspection
+======================
+
+Artificial keys are subject to change between versions.
+
+The following, however, have versioning guarantees:
+
+* ``prototype``: internal prototype (not to be confused with a possible
+  "prototype" property, which is the external prototype).
+
+* ``class_name``: string name for object class
+
+* ``class_number``: object class number, matches object dvalue
+
+Duktape 1.5.0
+-------------
+
+The following list describes artificial keys included in Duktape 1.5.0, see
+``src-input/duk_debugger.c`` for up-to-date behavior:
+
++---------------------------------+---------------------------+---------------------------------------------------------+
+| Artificial property key         | Object type(s)            | Description                                             |
++=================================+===========================+=========================================================+
+| ``heaphdr_flags``               | ``duk_heaphdr`` (all)     | Raw ``duk_heaphdr`` flags field; the individual flags   |
+|                                 |                           | are also provided as separate artificial properties.    |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``heaphdr_type``                | ``duk_heaphdr`` (all)     | ``duk_heaphdr`` type field, ``DUK_HTYPE_xxx`.           |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``refcount``                    | ``duk_heaphdr`` (all)     | Reference count, omitted if no refcount support.        |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``extensible``                  | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXTENSIBLE                             |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``constructable``               | ``duk_hobject``           | DUK_HOBJECT_FLAG_CONSTRUCTABLE                          |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``bound``                       | ``duk_hobject``           | DUK_HOBJECT_FLAG_BOUND                                  |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``compfunc``                    | ``duk_hobject``           | DUK_HOBJECT_FLAG_COMPFUNC                               |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``natfunc``                     | ``duk_hobject``           | DUK_HOBJECT_FLAG_NATFUNC                                |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``bufobj``                      | ``duk_hobject``           | DUK_HOBJECT_FLAG_BUFOBJ                                 |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``thread``                      | ``duk_hobject``           | DUK_HOBJECT_FLAG_THREAD                                 |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``array_part``                  | ``duk_hobject``           | DUK_HOBJECT_FLAG_ARRAY_PART                             |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``strict``                      | ``duk_hobject``           | DUK_HOBJECT_FLAG_STRICT                                 |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``notail``                      | ``duk_hobject``           | DUK_HOBJECT_FLAG_NOTAIL                                 |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``newenv``                      | ``duk_hobject``           | DUK_HOBJECT_FLAG_NEWENV                                 |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``namebinding``                 | ``duk_hobject``           | DUK_HOBJECT_FLAG_NAMEBINDING                            |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``createargs``                  | ``duk_hobject``           | DUK_HOBJECT_FLAG_CREATEARGS                             |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``envrecclosed``                | ``duk_hobject``           | DUK_HOBJECT_FLAG_ENVRECCLOSED                           |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``exotic_array``                | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXOTIC_ARRAY                           |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``exotic_stringobj``            | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXOTIC_STRINGOBJ                       |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``exotic_arguments``            | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXOTIC_ARGUMENTS                       |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``exotic_dukfunc``              | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXOTIC_DUKFUNC                         |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``exotic_proxyobj``             | ``duk_hobject``           | DUK_HOBJECT_FLAG_EXOTIC_PROXYOBJ                        |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``class_number``                | ``duk_hobject``           | Duktape internal class number (same as object dvalue).  |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``class_name``                  | ``duk_hobject``           | String class name, e.g. ``"ArrayBuffer"``.              |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``prototype``                   | ``duk_hobject``           | Points to the effective (internal) prototype and allows |
+|                                 |                           | enumeration of inherited properties in client control.  |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``props``                       | ``duk_hobject``           | Current property table allocation.                      |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``e_size``                      | ``duk_hobject``           | Entry part size.                                        |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``e_next``                      | ``duk_hobject``           | Entry part next index (= used size).                    |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``a_size``                      | ``duk_hobject``           | Array part size.                                        |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``h_size``                      | ``duk_hobject``           | Hash part size.                                         |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``length``                      | ``duk_harray``            | Array .length.                                          |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``length_nonwritable``          | ``duk_harray``            | Array .length writable (false) or non-writable (true).  |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| (not present yet)               | ``duk_hnatfunc``          | Native function pointer.                                |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``nargs``                       | ``duk_hnatfunc``          | Number of stack arguments.                              |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``magic``                       | ``duk_hnatfunc``          | Magic value.                                            |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``varargs``                     | ``duk_hnatfunc``          | True if function has variable arguments.                |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| (not present yet)               | ``duk_hcompfunc``         | Ecmascript function data area, including bytecode.      |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``nregs``                       | ``duk_hcompfunc``         | Number of bytecode executor registers.                  |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``nargs``                       | ``duk_hcompfunc``         | Number of stack arguments.                              |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``start_line``                  | ``duk_hcompfunc``         | First source code line.                                 |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``end_line``                    | ``duk_hcompfunc``         | Last source code line.                                  |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| (no properties yet)             | ``duk_hthread``           | No thread properties yet.                               |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``buffer``                      | ``duk_hbufobj``           | Underlying plain buffer (provided as a heapptr).        |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``slice_offset``                | ``duk_hbufobj``           | Byte offset to underlying buffer for start of slice.    |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``slice_length``                | ``duk_hbufobj``           | Byte length of slice.                                   |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``elem_shift``                  | ``duk_hbufobj``           | Shift value for element, e.g. Uint64 -> 3.              |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``elem_type``                   | ``duk_hbufobj``           | DUK_HBUFOBJ_ELEM_xxx                                    |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``is_view``                     | ``duk_hbufobj``           | True if bufferobject is a view (e.g. Uint8Array).       |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``extdata``                     | ``duk_hstring``           | DUK_HSTRING_FLAG_EXTDATA                                |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``bytelen``                     | ``duk_hstring``           | Byte length of string.                                  |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``charlen``                     | ``duk_hstring``           | Character length of string.                             |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``hash``                        | ``duk_hstring``           | String hash, algorithm depends on config options.       |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``data``                        | ``duk_hstring``           | Plain string value.                                     |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``dynamic``                     | ``duk_hbuffer``           | DUK_HBUFFER_FLAG_DYNAMIC                                |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``external``                    | ``duk_hbuffer``           | DUK_HBUFFER_FLAG_EXTERNAL                               |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``size``                        | ``duk_hbuffer``           | Byte size of buffer.                                    |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``dataptr``                     | ``duk_hbuffer``           | Raw pointer to current data area.                       |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``data``                        | ``duk_hbuffer``           | Buffer data.                                            |
++---------------------------------+---------------------------+---------------------------------------------------------+
+
+Currently disabled
+------------------
+
+These are disabled (``if #0``'d out) in code, and may be added back if useful:
+
++---------------------------------+---------------------------+---------------------------------------------------------+
+| Artificial property key         | Object type(s)            | Description                                             |
++=================================+===========================+=========================================================+
+| ``reachable``                   | ``duk_heaphdr`` (all)     | DUK_HEAPHDR_FLAG_REACHABLE                              |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``temproot``                    | ``duk_heaphdr`` (all)     | DUK_HEAPHDR_FLAG_TEMPROOT                               |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``finalizable``                 | ``duk_heaphdr`` (all)     | DUK_HEAPHDR_FLAG_FINALIZABLE                            |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``finalized``                   | ``duk_heaphdr`` (all)     | DUK_HEAPHDR_FLAG_FINALIZED                              |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``readonly``                    | ``duk_heaphdr`` (all)     | DUK_HEAPHDR_FLAG_READONLY                               |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``arridx``                      | ``duk_hstring``           | DUK_HSTRING_FLAG_ARRIDX                                 |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``internal``                    | ``duk_hstring``           | DUK_HSTRING_FLAG_INTERNAL                               |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``reserved_word``               | ``duk_hstring``           | DUK_HSTRING_FLAG_RESERVED_WORD                          |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``strict_reserved_word``        | ``duk_hstring``           | DUK_HSTRING_FLAG_STRICT_RESERVED_WORD                   |
++---------------------------------+---------------------------+---------------------------------------------------------+
+| ``eval_or_arguments``           | ``duk_hstring``           | DUK_HSTRING_FLAG_EVAL_OR_ARGUMENTS                      |
++---------------------------------+---------------------------+---------------------------------------------------------+
 
 "debugger" statement
 ====================
@@ -1672,7 +2505,7 @@ Ecmascript has a debugger statement::
 The E5 specification states that:
 
     Evaluating the DebuggerStatement production may allow an implementation
-    to cause a breakpoint when run under a debugger. If a debugger is not
+    to cause a breakpoint when run under a debugger.  If a debugger is not
     present or active this statement has no observable effect.
 
 Other Ecmascript engines typically treat a debugger statement as a breakpoint:
@@ -1809,7 +2642,7 @@ Overview
 
 This section contains some implementation notes on the Duktape internals.
 
-Duktape debugger support is optional and enabled with a feature option.
+Duktape debugger support is optional and enabled with a config option.
 The bytecode executor interrupt feature is also mandatory when debugger
 support is enabled.
 
@@ -1950,7 +2783,7 @@ The step state is rather tricky:
   not matter).  Execute in normal mode (unless there are breakpoints, of course).
   If the activation is unwound for any reason, enter paused mode.  This means
   that if an error is thrown, we resume execution in the catcher.  Step out
-  handling is concretely implemented as part of call stack unwinding, which
+  handling is concretely implemented as part of callstack unwinding, which
   differs completely from how other step commands are implemented.
 
   A coroutine yield does not trigger a "step out" because the callstack is not
@@ -1991,8 +2824,8 @@ pair.  The current file/line approach is intuitive but means that:
   functions.  This also affects minified Ecmascript code.
 
 * There are potentially multiple Ecmascript function instance (i.e.
-  ``duk_hcompiledfunction`` objects) that have been created from the same
-  spot.  The breakpoint will match all of them.
+  ``duk_hcompfunc`` objects) that have been created from the same spot.
+  The breakpoint will match all of them.
 
 Line transitions
 ----------------
@@ -2289,7 +3122,7 @@ It should be possible to enable debugger support even for very low memory
 devices (e.g. 256kB flash).
 
 * At the moment the additional code footprint for debugger support is around
-  10kB.
+  15-20 kB.
 
 Memory (RAM) footprint and minimal churn
 ----------------------------------------
@@ -2455,7 +3288,8 @@ variable length integer encoding in Duktape.
 
 However, when the current tag initial byte (IB) was added, it became very
 natural to use the tag byte to encode small integers and to encode the
-byte length of larger integers.
+byte length of larger integers.  This representation is actually quite
+similar to CBOR: https://tools.ietf.org/html/rfc7049.
 
 Accessors and proxies vs. variable get/set
 ------------------------------------------
@@ -2463,7 +3297,8 @@ Accessors and proxies vs. variable get/set
 * Triggering setters / getters may not be desirable.
 
 * Perhaps return value like Object.getOwnPropertyDescriptor(), and allow
-  debug client to invoke the getter if necessary?
+  debug client to invoke the getter if necessary?  (Heap walking provides
+  a similar feature now.)
 
 * Access proxy and target separately?
 
@@ -2525,7 +3360,7 @@ You may get the following when doing a DumpHeap::
 
     ==17318== Syscall param write(buf) points to uninitialised byte(s)
     ==17318==    at 0x5466700: __write_nocancel (syscall-template.S:81)
-    ==17318==    by 0x427ADA: duk_trans_socket_write_cb (duk_trans_socket.c:237)
+    ==17318==    by 0x427ADA: duk_trans_socket_write_cb (duk_trans_socket_unix.c:237)
     ==17318==    by 0x403538: duk_debug_write_bytes.isra.11 (duk_debugger.c:379)
     ==17318==    by 0x4036AC: duk_debug_write_strbuf (duk_debugger.c:463)
     [...]
@@ -2575,14 +3410,6 @@ There are several ways to make this faster:
 * Emit explicit line transition opcodes.  This has a memory and performance
   impact, even when a debugger is not attached, so this approach is also not
   very desirable.
-
-Fix debugger statement line handling
-------------------------------------
-
-When executing a "debugger;" statement, the debugger currently pauses after PC
-has already been incremented.  In other words, the debugger is paused "after"
-the statement has been executed.  In the debugger UI this looks like execution
-had paused on the line following the debugger statement.
 
 Improve compiler line number accuracy
 -------------------------------------
@@ -2644,8 +3471,6 @@ Various triggers for pausing could be added:
 
 * Pause on next statement
 
-* Pause on error about the be thrown
-
 * Pause on yield/resume
 
 * Pause on execution timeout
@@ -2654,6 +3479,8 @@ More flexible stepping
 ----------------------
 
 Additional stepping parameters could be implemented:
+
+* Step one PC at a time
 
 * Step for N bytecode instructions
 
@@ -2721,38 +3548,11 @@ GC is triggered, the GC notify cannot be sent inline from the mark-and-sweep
 code because it might then appear in the middle of the "get locals" response.
 Instead, events need to be flagged, based on counters, or queued.
 
-Reset command
--------------
-
-Having a shared command to reset/reboot a target might be useful.  It would
-require either a specific API callback or some form of command integration
-through the Duktape debugger API.
-
-Many targets have a management protocol that can be used to implement a reset,
-so that it doesn't necessarily have to be in the debug protocol.
-
 Possible new commands or command improvements
 ---------------------------------------------
 
-* Add callstack index to variable read/write
-
-* Add callstack index to Eval
-
 * More comprehensive callstack inspection, at least on par with what a stack
   trace provides
-
-* Shallow value inspection, ability to inspect internal stuff like internal
-  prototype but also state of object property tables, etc.
-
-  - Should be debug client driven and shallow so that the client can query
-    the value graph on its own.  This avoids the need to handle reference
-    loops on the target.
-
-  - Deep querying needs an object reference: the client can address objects
-    with a heap pointer.  It is then critical that no side effects can be
-    triggered during the traversal to avoid invalidating the heap pointers.
-    All debug commands involved in traversal must be side effect free and
-    perform no allocations.
 
 * Resume with error, i.e. inject error
 
@@ -2765,35 +3565,6 @@ Possible new commands or command improvements
 * Error handling for PutVar
 
 * Avoid side effects (getter invocation) in GetVar
-
-Application specific messages
------------------------------
-
-It would be useful to be able to send application specific commands to the
-target.  For instance, a debug client may want to query the target's memory
-allocator state or file system free space.
-
-Such messages can of course be exchanged out of band, outside the Duktape
-debugger protocol, and this is the cleanest option.  Note that this can be
-done even with a single TCP connection: some minimal framing is needed to
-distinguish between application specific data and Duktape debugger stream
-chunks.
-
-Even if an out of band solution is possible, it might be convenient to be able
-to add application specific commands into the debug protocol.  This would make
-it easy for debug clients to query target specific information (e.g. the heap
-allocator state of a specific target device) and show it in the debugger UI in
-an integrated fashion.
-
-Exposing the whole debug protocol to user code through a supported public API
-would mean significant versioning issues, but perhaps a limited API could be
-exposed:
-
-* An API call to send an application specific message with a string name
-  (e.g. "my-target-heap-state") and a string value.
-
-* A callback to receive an application specific message with a string name
-  and a string value.
 
 Direct support for structured values
 ------------------------------------
@@ -2814,6 +3585,9 @@ directly with dvalues, so that when C code does a::
 an arbitrarily complex object value (perhaps even an arbitrary object graph)
 can be decoded and pushed to the value stack.
 
+Heap walking support alleviates this problem for the cases where the
+structured data resides or can be placed in the Duktape heap.
+
 Heap dump viewer
 ----------------
 
@@ -2822,20 +3596,11 @@ debugger web UI converts into a JSON dump.  It'd be nice to include a viewer
 for the dump, so that it'd be easy to traverse the object graph, look for
 strings and values, etc.
 
-Bytecode viewer
----------------
-
-Add a command to download function bytecode so that the executor can show
-source code and bytecode view side-by-side.  This would be very useful when
-working with the Duktape compiler, for instance.
-
-With this view it might also be useful to implement PC-by-PC stepping.
-
 Eclipse debugger
 ----------------
 
 An Eclipse debugger would be very useful as it's a very popular IDE for
-embedded development.
+embedded development.  There are already integrations for Visual Studio Code.
 
 Breakpoint handling in attach/detach
 ------------------------------------
@@ -2858,3 +3623,82 @@ Buffer object support
 
 Make it easier to see buffer object contents (like for plain buffers), either
 by serializing them differently, or through heap walking.
+
+Separate callback for checking transport status
+-----------------------------------------------
+
+When Duktape is in the running state (not paused), Duktape will only call:
+
+* The peek callback periodically to see if there is anything to read.
+  There's no way to indicate a transport detach/error with peek now.
+
+* The write callback periodically, as a side effect of sending Status
+  notifies.  This is the main mechanism now for detecting a broken
+  transport in the running state.  If Status notifies were removed,
+  Duktape would not notice a transport break unless something else prompted
+  a write to the debug transport.
+
+It might be cleaner to provide either:
+
+* A callback to check transport status explicitly and perhaps allows even
+  an error message to be indicated.
+
+* Allow user code to proactively call into Duktape to indicate the transport
+  is broken (beyond calling ``duk_debugger_detach()``).
+
+However, for some transports it may not be possible to get transport status
+information without actually attempting a write.  This may be caused by the
+nature of the transport or an underlying platform API limitation, for example.
+So, such a transport status callback must be optional, and it may still be
+necessary to ensure a periodic write (a "keepalive" if nothing else) to detect
+transport errors in such cases.
+
+Extend ERR message with a programmatic string error code
+--------------------------------------------------------
+
+Current error messages have the form::
+
+    ERR <error number> <message> EOM
+
+The number space is awkward to manage modularly, and doesn't work well for
+application specific errors which would be useful for e.g. AppRequest
+messages.  Extend the error format to::
+
+    ERR <error number> <error string code> <message> EOM
+
+String codes could follow an all caps convention like ``"NOT_FOUND"``::
+
+    ERR 3 "NOT_FOUND" "breakpoint not found" EOM
+
+String error codes are easy to extend without conflicts like one has with
+a numbered sequence.
+
+Change callstack entries to avoid getter invocations
+----------------------------------------------------
+
+With heap walking in place callstack variable dump could provide the necessary
+information to distinguish data and accessor properties and let the debug
+client decide if getters are to be invoked.
+
+Callstack primitives could also return the variable list in a format matching
+the GetHeapObjInfo command, i.e. as a key/value list which also provides
+support for artificial properties and property flags.
+
+Replace GetBytecode with object inspection
+------------------------------------------
+
+The GetBytecode command could be removed by providing a reference to the
+current function and then using object inspection to get the bytecode data
+currently returned in GetBytecode -- that is, the bytecode, constants, etc.
+
+Improve garbage collection behavior during paused state
+-------------------------------------------------------
+
+Current behavior: garbage generated during paused state (refzero or objects
+in reference loops) will both be left in the heap and collected eventually
+by mark-and-sweep.  When mark-and-sweep is disabled such garbage will remain
+until heap destruction (so the debugger paused state works quite poorly when
+mark-and-sweep is entirely left out of config).
+
+Various improvements are possible, see discussion in
+https://github.com/svaarala/duktape/pull/617.

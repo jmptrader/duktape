@@ -10,6 +10,8 @@
  *  buffers as an "array-like" argument and copy the indexed elements.
  */
 
+/*@include util-buffer.js@*/
+
 /*---
 {
     "custom": true
@@ -50,18 +52,16 @@ function dataViewTest() {
     print(Object.prototype.toString.call(v.buffer));
     print(v.buffer === buf);
 
-    // Duktape.Buffer argument: non-standard, best behavior probably not to
-    // set a .buffer argument?  Or to create a fresh ArrayBuffer for the
-    // .buffer property?
-    // FIXME: to be decided
-    v = new DataView(new Duktape.Buffer('dummy'));
+    // Plain buffer argument: non-standard, current behavior is to coerce to
+    // an ArrayBuffer object for the .buffer property.
+    v = new DataView(createPlainBuffer('dummy'));
     print(Object.prototype.toString.call(v.buffer));
     print(v.buffer === buf);
 
     // Node.js Buffer argument: non-standard, best behavior probably not to
     // set a .buffer argument?  Or to create a fresh ArrayBuffer for the
     // .buffer property?
-    // FIXME: to be decided
+    // XXX: to be decided
     v = new DataView(new Buffer('foobar'));
     print(Object.prototype.toString.call(v.buffer));
     print(v.buffer === buf);

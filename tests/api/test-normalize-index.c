@@ -11,9 +11,9 @@ top=3, idx=3, duk_normalize_index -> DUK_INVALID_INDEX
 top=3, idx=4, duk_normalize_index -> DUK_INVALID_INDEX
 top=3, idx=5, duk_normalize_index -> DUK_INVALID_INDEX
 req_norm_idx: top 3 after popping arg
-idx=-5 -> duk_require_normalize_index -> Error: invalid index
+idx=-5 -> duk_require_normalize_index -> RangeError: invalid stack index -5
 req_norm_idx: top 3 after popping arg
-idx=-4 -> duk_require_normalize_index -> Error: invalid index
+idx=-4 -> duk_require_normalize_index -> RangeError: invalid stack index -4
 req_norm_idx: top 3 after popping arg
 idx=-3 -> duk_require_normalize_index -> 0
 req_norm_idx: top 3 after popping arg
@@ -27,16 +27,18 @@ idx=1 -> duk_require_normalize_index -> 1
 req_norm_idx: top 3 after popping arg
 idx=2 -> duk_require_normalize_index -> 2
 req_norm_idx: top 3 after popping arg
-idx=3 -> duk_require_normalize_index -> Error: invalid index
+idx=3 -> duk_require_normalize_index -> RangeError: invalid stack index 3
 req_norm_idx: top 3 after popping arg
-idx=4 -> duk_require_normalize_index -> Error: invalid index
+idx=4 -> duk_require_normalize_index -> RangeError: invalid stack index 4
 req_norm_idx: top 3 after popping arg
-idx=5 -> duk_require_normalize_index -> Error: invalid index
+idx=5 -> duk_require_normalize_index -> RangeError: invalid stack index 5
 ===*/
 
-static duk_ret_t req_norm_idx(duk_context *ctx) {
+static duk_ret_t req_norm_idx(duk_context *ctx, void *udata) {
 	duk_idx_t idx = (duk_idx_t) duk_get_int(ctx, -1);
 	duk_idx_t norm_idx;
+
+	(void) udata;
 
 	duk_pop(ctx);
 	printf("req_norm_idx: top %ld after popping arg\n", (long) duk_get_top(ctx));
@@ -66,7 +68,7 @@ void test(duk_context *ctx) {
 
 	for (idx = -5; idx <= 5; idx++) {
 		duk_push_int(ctx, idx);
-		duk_safe_call(ctx, req_norm_idx, 1, 1);
+		duk_safe_call(ctx, req_norm_idx, NULL, 1, 1);
 		printf("idx=%ld -> duk_require_normalize_index -> %s\n", (long) idx, duk_to_string(ctx, -1));
 		duk_pop(ctx);
 	}

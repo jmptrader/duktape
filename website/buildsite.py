@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
 #
 #  Build Duktape website.  Must be run with cwd in the website/ directory.
 #
@@ -855,6 +855,16 @@ def generateDownloadPage(releases_filename):
 	down_soup = validateAndParseHtml(readFile('download/download.html'))
 	setNavSelected(templ_soup, 'Download')
 
+	# Flip download list, preferred by most users
+	tbody = down_soup.select('#releases tbody')[0]
+	assert(tbody is not None)
+	dl_list = tbody.select('tr')
+	for dl in dl_list:
+		dl.extract()
+	dl_list.reverse()
+	for dl in dl_list:
+		tbody.append(dl)
+
 	title_elem = templ_soup.select('#template-title')[0]
 	del title_elem['id']
 	title_elem.string = 'Downloads'
@@ -929,13 +939,16 @@ def generateGuide():
 	navlinks.append(['#ctypes', 'C types'])
 	navlinks.append(['#typealgorithms', 'Type algorithms'])
 	navlinks.append(['#duktapebuiltins', 'Duktape built-ins'])
-	navlinks.append(['#es6features', 'Ecmascript E6 features'])
+	navlinks.append(['#es6features', 'ES2015 (E6) features'])
+	navlinks.append(['#es7features', 'ES2016 (E7) features'])
 	navlinks.append(['#custombehavior', 'Custom behavior'])
 	navlinks.append(['#customjson', 'Custom JSON formats'])
 	navlinks.append(['#customdirectives', 'Custom directives'])
 	navlinks.append(['#bufferobjects', 'Buffer objects'])
 	navlinks.append(['#errorobjects', 'Error objects'])
 	navlinks.append(['#functionobjects', 'Function objects'])
+	navlinks.append(['#datetime', 'Date and time'])
+	navlinks.append(['#random', 'Random numbers'])
 	navlinks.append(['#debugger', 'Debugger'])
 	navlinks.append(['#modules', 'Modules'])
 	navlinks.append(['#logging', 'Logging'])
@@ -978,12 +991,15 @@ def generateGuide():
 	res += processRawDoc('guide/typealgorithms.html')
 	res += processRawDoc('guide/duktapebuiltins.html')
 	res += processRawDoc('guide/es6features.html')
+	res += processRawDoc('guide/es7features.html')
 	res += processRawDoc('guide/custombehavior.html')
 	res += processRawDoc('guide/customjson.html')
 	res += processRawDoc('guide/customdirectives.html')
 	res += processRawDoc('guide/bufferobjects.html')
 	res += processRawDoc('guide/errorobjects.html')
 	res += processRawDoc('guide/functionobjects.html')
+	res += processRawDoc('guide/datetime.html')
+	res += processRawDoc('guide/random.html')
 	res += processRawDoc('guide/debugger.html')
 	res += processRawDoc('guide/modules.html')
 	res += processRawDoc('guide/logging.html')
@@ -1078,7 +1094,7 @@ def writeFile(name, data):
 	f.close()
 
 def scrapeDuktapeVersion():
-	f = open(os.path.join('..', 'src', 'duk_api_public.h.in'))
+	f = open(os.path.join('..', 'src-input', 'duk_api_public.h.in'))
 	re_ver = re.compile(r'^#define DUK_VERSION\s+(\d+)L?\s*$')
 	for line in f:
 		line = line.strip()

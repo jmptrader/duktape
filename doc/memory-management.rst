@@ -511,7 +511,7 @@ allocation.
 Normally, heap elements are typed by the tagged value (``duk_tval``)
 which holds the heap pointer, or if the heap element reference is in
 a struct field, the field is usually already correctly typed through its
-C type (e.g. a field might have the type "``duk_hcompiledfunction *``").
+C type (e.g. a field might have the type "``duk_hcompfunc *``").
 However, heap elements do have a "heap type" field as part of the
 ``h_flags`` field of the header; this is not normally used, but is
 needed by e.g. reference counting.  As a separate issue, some heap types
@@ -532,23 +532,24 @@ The current specific heap element types are:
 
   + Fixed size allocation consisting of a header, whose size
     depends on the object type (``duk_hobject``, ``duk_hthread``,
-    ``duk_hcompiledfunction``, or ``duk_hnativefunction``).
+    ``duk_hcompfunc``, ``duk_hnatfunc``, etc).
 
   + The specific "sub type" and its associated struct definition
     can be determined using object flags, using the macros:
 
-    - ``DUK_HOBJECT_IS_COMPILEDFUNCTION``
-    - ``DUK_HOBJECT_IS_NATIVEFUNCTION``
+    - ``DUK_HOBJECT_IS_COMPFUNC``
+    - ``DUK_HOBJECT_IS_NATFUNC``
     - ``DUK_HOBJECT_IS_THREAD``
+    - (and other sub types added later)
     - If none of the above are true, the object is a plain object
       (``duk_hobject`` without any extended structure)
 
   + Properties are stored in a separate, dynamic allocation, and contain
     references to other heap elements.
 
-  + For ``duk_hcompiledfunction``, function bytecode, constants, and
+  + For ``duk_hcompfunc``, function bytecode, constants, and
     references to inner functions are stored in a fixed ``duk_hbuffer``
-    referenced by the ``duk_hcompiledfunction`` header.  These provide
+    referenced by the ``duk_hcompfunc`` header.  These provide
     further references to other heap elements.
 
   + For ``duk_hthread`` the heap header contains references to the
@@ -1122,21 +1123,23 @@ The following flags in the heap element header are used for controlling
 mark-and-sweep:
 
 * ``DUK_HEAPHDR_FLAG_REACHABLE``:
-  element is reachable through the reachability graph
+  element is reachable through the reachability graph.
 
 * ``DUK_HEAPHDR_FLAG_TEMPROOT``:
   element's reachability has been marked, but its children have not been
-  processed; this is required to limit the C recursion level
+  processed; this is required to limit the C recursion level.
 
 * ``DUK_HEAPHDR_FLAG_FINALIZABLE``:
   element is not reachable after the first marking pass (see algorithm),
   has a finalizer, and the finalizer has not been called in the previous
   mark-and-sweep round; object will be moved to the finalization work
-  list and will be considered (temporarily) a reachability root
+  list and will be considered (temporarily) a reachability root.
 
 * ``DUK_HEAPHDR_FLAG_FINALIZED``:
   element's finalizer has been executed, and if still unreachable, object
-  can be collected
+  can be collected.  The finalizer will not be called again until this
+  flag is cleared; this prevents accidental re-entry of the finalizer
+  until the object is explicitly rescued and this flag cleared.
 
 These are referred to as ``REACHABLE``, ``TEMPROOT``, ``FINALIZABLE``,
 and ``FINALIZED`` below for better readability.  All the flags are clear

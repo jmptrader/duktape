@@ -2,6 +2,8 @@
  *  Duktape builtin.
  */
 
+/*@include util-buffer.js@*/
+
 /*---
 {
     "custom": true
@@ -11,14 +13,10 @@
 /*===
 global
 Duktape object wc
-print function wc
-alert function wc
 Duktape
 Duktape.version number none
-Duktape.Buffer function wc
 Duktape.Pointer function wc
 Duktape.Thread function wc
-Duktape.Logger function wc
 Duktape.info function wc
 Duktape.act function wc
 Duktape.gc function wc
@@ -28,16 +26,6 @@ Duktape.dec function wc
 Duktape.compact function wc
 Duktape.env string wc
 Duktape.modLoaded object wc
-Duktape.Buffer.name string none
-Duktape.Buffer.length number none
-Duktape.Buffer.prototype object none
-Duktape.Buffer.prototype.constructor function wc
-Duktape.Buffer.prototype.toString function wc
-Duktape.Buffer.prototype.valueOf function wc
-Duktape.Buffer.prototype.toString.length number none
-Duktape.Buffer.prototype.toString.name string none
-Duktape.Buffer.prototype.valueOf.length number none
-Duktape.Buffer.prototype.valueOf.name string none
 Duktape.Pointer.name string none
 Duktape.Pointer.length number none
 Duktape.Pointer.prototype object none
@@ -61,38 +49,6 @@ Duktape.Thread.resume.length number none
 Duktape.Thread.resume.name string none
 Duktape.Thread.current.length number none
 Duktape.Thread.current.name string none
-Duktape.Logger.name string none
-Duktape.Logger.length number none
-Duktape.Logger.prototype object none
-Duktape.Logger.clog object wc
-Duktape.Logger.prototype.constructor function wc
-Duktape.Logger.prototype.l number w
-Duktape.Logger.prototype.n string w
-Duktape.Logger.prototype.fmt function wc
-Duktape.Logger.prototype.raw function wc
-Duktape.Logger.prototype.trace function wc
-Duktape.Logger.prototype.debug function wc
-Duktape.Logger.prototype.info function wc
-Duktape.Logger.prototype.warn function wc
-Duktape.Logger.prototype.error function wc
-Duktape.Logger.prototype.fatal function wc
-Duktape.Logger.prototype.fmt.length number none
-Duktape.Logger.prototype.fmt.name string none
-Duktape.Logger.prototype.raw.length number none
-Duktape.Logger.prototype.raw.name string none
-Duktape.Logger.prototype.trace.length number none
-Duktape.Logger.prototype.trace.name string none
-Duktape.Logger.prototype.debug.length number none
-Duktape.Logger.prototype.debug.name string none
-Duktape.Logger.prototype.info.length number none
-Duktape.Logger.prototype.info.name string none
-Duktape.Logger.prototype.warn.length number none
-Duktape.Logger.prototype.warn.name string none
-Duktape.Logger.prototype.error.length number none
-Duktape.Logger.prototype.error.name string none
-Duktape.Logger.prototype.fatal.length number none
-Duktape.Logger.prototype.fatal.name string none
-Duktape.Logger.clog.n string wec
 Duktape.info.length number none
 Duktape.info.name string none
 Duktape.act.length number none
@@ -129,6 +85,10 @@ function propsTest() {
         function rec(obj, printname) {
             visited.push(obj);
             var ownprops = Object.getOwnPropertyNames(obj);  // keep enum order
+
+            // Skip Logger which is no longer a default built-in in Duktape 2.x.
+            ownprops = ownprops.filter(function (pname) { return pname !== 'Logger'; });
+
             ownprops.forEach(function (pname) {
                 printraw(obj, pname, printname + '.' + pname);
             });
@@ -144,8 +104,7 @@ function propsTest() {
 
     print('global');
     printraw(this, 'Duktape', 'Duktape');
-    printraw(this, 'print', 'print');
-    printraw(this, 'alert', 'alert');
+    // print and alert were removed in Duktape 2.x.
 
     print('Duktape');
     printall(Duktape, 'Duktape');
@@ -163,18 +122,30 @@ string
 666f6f
 string
 666f6fe188b4
-buffer
+object
 102 111 111
-buffer
+object
 102 111 111 4660
 string
 Zm9v
 string
 Zm9v4Yi0
-buffer
+object
 102 111 111
-buffer
+object
 102 111 111 4660
+string
+Zm9v
+object
+102 111 111
+string
+Zm9v
+object
+102 111 111
+string
+Zm9v
+object
+102 111 111
 ===*/
 
 function printEnc(x) {
@@ -184,7 +155,7 @@ function printEnc(x) {
 
 function printDec(x) {
     print(typeof x);
-    x = String(x);
+    x = bufferToString(x);
     var res = [];
     for (var i = 0; i < x.length; i++) {
         res.push(x.charCodeAt(i));
@@ -204,6 +175,51 @@ function encDecTest() {
 
     printDec(Duktape.dec('base64', 'Zm9v'));
     printDec(Duktape.dec('base64', 'Zm9v4Yi0'));
+
+    // Plain buffer input
+    var pb = createPlainBuffer(3);
+    pb[0] = 'f'.charCodeAt(0);
+    pb[1] = 'o'.charCodeAt(0);
+    pb[2] = 'o'.charCodeAt(0);
+    printEnc(Duktape.enc('base64', pb));
+    var pb = createPlainBuffer(4);
+    pb[0] = 'Z'.charCodeAt(0);
+    pb[1] = 'm'.charCodeAt(0);
+    pb[2] = '9'.charCodeAt(0);
+    pb[3] = 'v'.charCodeAt(0);
+    printDec(Duktape.dec('base64', pb));
+
+    // ArrayBuffer input
+    var ab = new ArrayBuffer(3);
+    ab[0] = 'f'.charCodeAt(0);
+    ab[1] = 'o'.charCodeAt(0);
+    ab[2] = 'o'.charCodeAt(0);
+    printEnc(Duktape.enc('base64', ab));
+    var ab = new ArrayBuffer(4);
+    ab[0] = 'Z'.charCodeAt(0);
+    ab[1] = 'm'.charCodeAt(0);
+    ab[2] = '9'.charCodeAt(0);
+    ab[3] = 'v'.charCodeAt(0);
+    printDec(Duktape.dec('base64', ab));
+
+    // Uint8Array slice input
+    var ab = new ArrayBuffer(6);
+    ab[0] = '!'.charCodeAt(0);
+    ab[1] = '!'.charCodeAt(0);
+    ab[2] = 'f'.charCodeAt(0);
+    ab[3] = 'o'.charCodeAt(0);
+    ab[4] = 'o'.charCodeAt(0);
+    ab[5] = '!'.charCodeAt(0);
+    printEnc(Duktape.enc('base64', new Uint8Array(ab).subarray(2, 5)));
+    var ab = new ArrayBuffer(7);
+    ab[0] = '_'.charCodeAt(0);
+    ab[1] = '_'.charCodeAt(0);
+    ab[2] = 'Z'.charCodeAt(0);
+    ab[3] = 'm'.charCodeAt(0);
+    ab[4] = '9'.charCodeAt(0);
+    ab[5] = 'v'.charCodeAt(0);
+    ab[6] = '_'.charCodeAt(0);
+    printDec(Duktape.dec('base64', new Uint8Array(ab).subarray(2, 6)));
 }
 
 print('encdec');

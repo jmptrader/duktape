@@ -26,7 +26,7 @@ after explicit gc
 read finalizer: undefined
 ==> rc=0, result='undefined'
 *** test_set_nonobject (duk_safe_call)
-==> rc=1, result='TypeError: invalid base value'
+==> rc=1, result='TypeError: cannot write property '?Finalizer' of 123'
 *** test_finalizer_loop (duk_safe_call)
 before pop
 after pop
@@ -41,7 +41,9 @@ static duk_ret_t basic_finalizer(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_basic(duk_context *ctx) {
+static duk_ret_t test_basic(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	/* Object to be finalized, special toString() */
 	duk_push_object(ctx);
 	duk_eval_string(ctx, "(function() { return 'target object'; })");
@@ -84,7 +86,9 @@ static duk_ret_t c_finalizer(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_recursive_finalizer(duk_context *ctx) {
+static duk_ret_t test_recursive_finalizer(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	/* Object to be finalized */
 	duk_push_object(ctx);
 	duk_push_int(ctx, 123);
@@ -153,14 +157,18 @@ static duk_ret_t test_recursive_finalizer(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_get_nonobject(duk_context *ctx) {
+static duk_ret_t test_get_nonobject(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_int(ctx, 123);
 	duk_get_finalizer(ctx, -1);
 	printf("read finalizer: %s\n", duk_safe_to_string(ctx, -1));
 	return 0;
 }
 
-static duk_ret_t test_set_nonobject(duk_context *ctx) {
+static duk_ret_t test_set_nonobject(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_int(ctx, 123);
 	duk_push_int(ctx, 321);
 	duk_set_finalizer(ctx, -2);
@@ -168,7 +176,9 @@ static duk_ret_t test_set_nonobject(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_finalizer_loop(duk_context *ctx) {
+static duk_ret_t test_finalizer_loop(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	/* Setup a finalizer loop: the finalizer of a finalizer is the
 	 * finalizer itself.  The finalizer won't be called recursively.
 	 */

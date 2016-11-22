@@ -60,10 +60,10 @@ interest only can have a local name or have a double underscore after "DUK"::
   /* select DUK_FOO provider */
   #define DUK_FOO  DUK_FOO_ALT2
 
-There is only one space after a ``#define``, ``#ifdef``, etc, but there
-may be multiple spaces between the a macro name and its definition.  There
-is no strict rule on the alignment of a macro value; successive definitions
-usually keep values in the same column.
+There is only one space after a ``#define``, ``#if``, etc, but there may be
+multiple spaces between the a macro name and its definition.  There is no
+strict rule on the alignment of a macro value; successive definitions usually
+keep values in the same column.
 
 Comments are always traditional C comments, never ``//``, as they are not
 portable to older compilers::
@@ -126,7 +126,7 @@ This is more macro compatible.  Example::
 
 Multi-statement macros should use a ``do-while(0)`` construct::
 
-  #define  FROBNICATE(x,y)  do { \
+  #define FROBNICATE(x,y)  do { \
                   x = x * x; \
                   y = y * y; \
           } while (0)
@@ -135,23 +135,103 @@ When the body of a macro is sometimes empty, use an empty do-while so that
 the macro still yields a statement::
 
   #if defined(DUK_USE_FROB)
-  #define  FROBNICATE(x,y)  do { \
+  #define FROBNICATE(x,y)  do { \
                   x = x * x; \
                   y = y * y; \
           } while (0)
   #else
-  #define  FROBNICATE(x,y)  do { } while (0)
+  #define FROBNICATE(x,y)  do { } while (0)
   #endif
 
 Use parentheses when referring to macro arguments and the final macro
 result to minimize error proneness::
 
-  #define  MULTIPLY(a,b)  ((a) * (b))
+  #define MULTIPLY(a,b)  ((a) * (b))
 
   /* Now MULTIPLY(1 + 2, 3) expands to ((1 + 2) * (3)) == 9, not
    * 1 + 2 * 3 == 7.  Parentheses are used around macro result for
    * similar reasons.
    */
+
+Labels are intended by one space relative to the parent tab depth::
+
+  DUK_LOCAL void duk__helper(duk_context *ctx) {
+          if (!ctx) {
+                  DUK_D(DUK_DPRINT("ctx is NULL"));
+                  goto fail;
+          }
+
+          return;
+
+   fail:
+          DUK_D(DUK_DPRINT("failed, detaching"));
+  }
+
+Comment styles
+--------------
+
+A block or "banner" comment is used in file headers and to distinguish logical
+sections containing (typically) multiple functions, definitions, variables, etc::
+
+    /*
+     *  First line is empty and there are two spaces between the star
+     *  characters and text.
+     *
+     *  There are two spaces after a period ending a sentence.  This is
+     *  used throughout the Duktape code base and documentation.
+     */
+
+A compact comment is typically used to describe a single function/variable,
+or a sequence of small defines grouped together::
+
+    /* Text starts on the first line with a capital letter.  There's only
+     * one space between a star and the text.  Text ends with a period.
+     */
+
+    /* Can also be a single line. */
+    static void duk__helper(void) {
+            /* ... */
+    }
+
+A compact comment may also appear intended inside a function.  The style is
+the same::
+
+    static void duk__helper(char *values, int count) {
+            int i;
+
+            /* Frobnicate all the elements in the user supplied
+             * list of values.
+             */
+            for (i = 0; i < count; i++) {
+                /* ... */
+            }
+    }
+
+If a comment doesn't begin with a capital letter, it also doesn't have an
+ending period (i.e. the text is not a sentence)::
+
+    static void duk__helper(char *values, int count) {
+            int i;
+
+            /* frobnicate values */
+            for (i = 0; i < count; i++) {
+                /* ... */
+            }
+    }
+
+A comment on the same line as a statement is separate by two spaces.  Don't
+use C++ style comments as they're not portable::
+
+    static void duk__helper(char *values, int count) {
+            int i;  /* loop counter */
+
+            /* ... */
+
+            return;  /* No return value. */
+    }
+
+The text in the comment may be a sentence (``/* No return value. */``, ends
+in a period) or not (``/* no return value */``, no period).
 
 Local variable declarations
 ---------------------------
@@ -194,6 +274,18 @@ The fix is::
           x = 123;
           ...
   }
+
+Local variable naming
+---------------------
+
+Variables are generally lowercase and underscore separated, but no strict
+guidelines otherwise.
+
+Avoid local variable names which might shadow with global symbols defined in
+platform headers (not just one platform but potentially any platform).  For
+example, using ``alloc`` would be a bad idea, and ``index`` also causes
+concrete problems with some GCC versions.  There are a few blacklisted
+identifiers in the code policy check.
 
 Other variable declarations
 ---------------------------
@@ -284,6 +376,66 @@ See:
 * http://en.wikipedia.org/wiki/Include_guard
 
 ``#pragma once`` is not portable, and is not used.
+
+Preprocessor value comparisons with empty arguments must be avoided
+-------------------------------------------------------------------
+
+This will cause a compile error even with newer compilers::
+
+  /* FOO and BAR are defined, BAR is defined with an empty value. */
+  #define FOO 123
+  #define BAR
+
+  #if defined(FOO) && defined(BAR) && (FOO == BAR)
+  /* ... */
+  #endif
+
+It doesn't help to guard the comparison because the root cause is the
+comparison having an empty argument::
+
+  #define FOO 123
+  #define BAR
+
+  #if defined(FOO) && defined(BAR)  /* will match */
+  #if (FOO == BAR)  /* still fails */
+  /* ... */
+  #endif
+  #endif
+
+The "guarded" form above is still preferred because it works also with
+compilers which fail a comparison with an undefined value.
+
+Explicitly detecting an empty value seems difficult to do properly, so
+there doesn't seem to be an easy way to avoid this:
+
+* http://stackoverflow.com/questions/3781520/how-to-test-if-preprocessor-symbol-is-defined-but-has-no-value
+
+The comparison is not an issue in Duktape internals when comparing against
+**required config options**.  This is safe, for example::
+
+  #if (DUK_USE_ALIGN_BY == 8)
+  /* ... */
+  #endif
+
+The comparison is a concrete issue in ``duk_config.h`` where the defines
+provided by the environment vary a great deal.  See for example:
+
+* https://github.com/judofyr/duktape.rb/pull/33#issuecomment-159488580
+
+Preprocessor ifdef vs. if defined
+---------------------------------
+
+This form is preferred::
+
+  #if defined(FROB)
+  ...
+  #endif
+
+instead of::
+
+  #ifdef FROB
+  ...
+  #endif
 
 FIXME, TODO, XXX, NOTE, etc markers
 -----------------------------------
@@ -434,15 +586,15 @@ If the log writes are not omitted, the workaround for lack of variadic
 macros causes a lot of warnings with some compilers.  With this wrapping,
 at least the non-debug build will be clean on non-C99 compilers.
 
-Clang -Wcast-align
-------------------
+Gcc/clang -Wcast-align
+----------------------
 
 When casting from e.g. a ``duk_uint8_t *`` to a struct pointer clang will
 emit a warning when ``-Wcast-align`` is used; see ``misc/clang_cast_align.c``
 and https://github.com/svaarala/duktape/issues/270.
 
-One fix is to change the original pointer being casted into a ``void *``
-from a char/byte-based pointer (e.g. ``duk_uint8_t *``)::
+One fix is to change the original pointer being cast into a ``void *`` from
+a char/byte-based pointer (e.g. ``duk_uint8_t *``)::
 
   void *p = DUK_FICTIONAL_GET_BUFFER_BASE(...);
   struct dummy *dummy = (struct dummy *) p;
@@ -458,6 +610,68 @@ In such situations casting through a ``void *`` avoids the warning::
 
 Code doing casts like this must of course be aware of actual target
 alignment requirements and respect them properly.
+
+Gcc/clang -Wcast-qual
+---------------------
+
+As a general rule casting from e.g. ``const char *`` to ``char *``
+should be avoided by reworking code structure.  Sometimes this can't
+be avoided though; for example, ``duk_push_pointer()`` takes a ``void *``
+argument and if the source pointer is ``const char *`` a cast may be
+necessary.
+
+There doesn't seem to be a nice portable approach:
+
+* Casting through a ``void *`` is not enough to silence the warning.
+
+* Casting through an integer (e.g. ``(void *) (duk_uintptr_t) const_ptr``)
+  works but assumes that pointers can be safely cast through an integer.
+  This is not necessarily portable to platforms with segmented pointers.
+  Also, ``(u)intptr_t`` is an optional type in C99.
+
+If a const-losing cast is required internally, the following macro is used
+to cast an arbitrary const pointer into a ``void *``::
+
+  const my_type *src;
+
+  dst = (char *) DUK_LOSE_CONST(src);
+
+It is defined in ``duk_config.h`` so that it can be hacked if necessary.
+If nothing else, it signals the intent of the call site.
+
+A similar issue exists for volatile pointers.  Technically casting from a
+volatile pointer to a non-volatile pointer and then using the non-volatile
+pointer has "undefined behavior".  In practice the compiler may generate code
+which conflicts with assumed behavior, e.g. not reading or writing the value
+behind the pointer every time.  Rework the code to avoid the cast.  For
+example::
+
+  void write_something(int *target);
+
+  void test(void) {
+      volatile int x = 123;
+
+      write_something((int *) &x);
+  }
+
+can be reworked to::
+
+  void write_something(int *target);
+
+  void test(void) {
+      volatile int x = 123;
+      int tmp;
+
+      write_something(&tmp);
+      x = tmp;
+  }
+
+For volatile byte arrays a workaround is awkward because you can't use a
+non-volatile temporary and then ``memcpy()`` from the temporary into the
+volatile buffer: a volatile-to-non-volatile cast would happen for the
+``memcpy()`` call.  You'd need to copy the bytes one by one manually or
+use an external helper which accepts a volatile source and a non-volatile
+destination.
 
 Gcc/clang -Wfloat-equal
 -----------------------
@@ -478,6 +692,56 @@ code base is not ``-Wfloat-equal`` clean.
 One workaround would be to implement all comparisons by looking at the IEEE
 byte representation directly (using a union with double and byte array).
 This is a rather heavy workaround though.
+
+Avoid (u)intptr_t arithmetic
+----------------------------
+
+The ``(u)intptr_t`` types are optional in C99 so it's best to avoid using
+them whenever possible.  Duktape provides ``duk_(u)intptr_t`` even when
+they're missing.
+
+Platforms/compilers with exotic pointer models may have unexpected behavior
+when a pointer is cast to ``(u)intptr_t`` and then used in arithmetic or
+binary operations.  For more details, see:
+
+* https://github.com/svaarala/duktape/issues/530#issuecomment-171654860
+
+* https://github.com/svaarala/duktape/issues/530#issuecomment-171697759
+
+Arithmetic on integer cast pointer values may be needed e.g. for alignment::
+
+    /* Align to 4. */
+    while (((duk_size_t) (p)) & 0x03) {
+        p++;
+    }
+
+**Don't** use ``duk_(u)intptr_t`` in such cases to avoid portability issues
+with exotic pointer models::
+
+    /* AVOID THIS */
+    while (((duk_uintptr_t) (p)) & 0x03) {
+        p++;
+    }
+
+Argument order
+==============
+
+Having a consistent argument order makes it easier to read and maintain code.
+Also when the argument position of functions match it often saves some move
+instructions in the compiled code.
+
+Current conventions:
+
+* The ``ctx`` or ``heap`` argument, if present, is always first.
+
+* For callbacks, a userdata argument follows ``ctx`` or ``heap``; if neither
+  is present, the userdata argument is first.  Same applies to user-defined
+  macros which accept a userdata argument (e.g. pointer compression macros).
+
+* When registering a callback, the userdata argument to be given in later
+  callbacks is immediately after the callback(s) related to the userdata.
+
+* Flags fields are typically last.
 
 Symbol visibility
 =================
@@ -547,7 +811,7 @@ The ``DUK_INTERNAL_DECL`` idiom is::
   DUK_INTERNAL_DECL const char *duk_str_not_object;
   #endif  /* !DUK_SINGLE_FILE */
 
-For this to work in the single file case, ``util/combine_src.py`` must
+For this to work in the single file case, ``tools/combine_src.py`` must
 ensure that the symbol definition appears before its use.  This is currently
 handled via manual file reordering.
 
@@ -693,40 +957,6 @@ The downsides include:
 * Indirection obscures the strings emitted from each call site a bit, and
   makes the code less modular.
 
-Feature detection in duktape.h
-==============================
-
-The ``duktape.h`` header which provides the Duktape public API defines and
-also handles portability, such as:
-
-* Detecting compiler / platform combinations and choosing appropriate
-  values for byte order, alignment requirements, availability of variadic
-  macros, etc.
-
-* Provides type wrappers (typedefs) for all types required by Duktape both
-  in its public API and internally.
-
-* Resolve user feature options (``DUK_OPT_xxx``) into effective feature
-  options used internally (``DUK_USE_xxx``).
-
-* Includes system headers needed for e.g. type detection.
-
-* When compiling Duktape itself (distinguished through the ``DUK_COMPILING_DUKTAPE``
-  define provided by ``duk_internal.h``) defines critical feature selection
-  defines (like ``_POSIX_C_SOURCE``) needed by e.g. system date headers.
-  When compiling user code, avoids defining feature selection defines to
-  minimize conflicts with application code.
-
-The ``duktape.h`` header is built from individual parts to make it easier to
-manage during development.
-
-Originally public and internal feature detection were done separately, but
-increasingly the public API started needing typedefs and also became
-dependent on effective feature options.  The initial workaround was to do a
-minimal platform and feature detection in the public header and consistency
-check it against internal feature detection, but this became more and more
-unwieldy.
-
 Portability concerns
 ====================
 
@@ -734,8 +964,11 @@ No variadic macros
 ------------------
 
 Lack of variadic macros can be worked around by using comma expressions.
-The ``duk_push_error_object()`` API call is a good example.  Without
-variadic macros it's defined as::
+The ``duk_push_error_object()`` API call is a good example.  It needs to
+capture the call site's ``__FILE__`` and ``__LINE__`` which needs some
+macro expansions to be included in the function call arguments.
+
+Without variadic macros it's defined as::
 
     DUK_EXTERNAL_DECL duk_idx_t duk_push_error_object_stash(duk_context *ctx, duk_errcode_t err_code, const char *fmt, ...);
     /* Note: parentheses are required so that the comma expression works in assignments. */
@@ -766,6 +999,12 @@ not work::
                   duk_push_error_object_stash (ctx, 123, "foo %s", "bar");
 
 The problem is that ``__FILE__`` gets assigned to err_idx.
+
+The limitation in this technique is the need to "stash" the file/line
+information temporarily which is not thread safe unless the stash is
+located e.g. in the ``duk_hthread`` or ``duk_heap`` structure.  (At least
+up to Duktape 1.4.x the stashes for file/line are global and thus not
+thread safe; the potential issues don't compromise memory safety though.)
 
 Missing or broken platform functions
 ------------------------------------
@@ -839,7 +1078,7 @@ There is an interesting corner case when trying to define minimum signed
 integer value constants.  For instance, trying to define a constant for
 the minimum 32-bit signed integer as follows is non-portable::
 
-  #define  MIN_VALUE  (-0x80000000L)
+  #define MIN_VALUE  (-0x80000000L)
 
 Apparently the compiler will first evaluate "0x80000000L" and, despite being
 a signed constant, determine that it won't fit into a signed integer so it
@@ -1048,6 +1287,13 @@ conservative and may indicate overflow even when one wouldn't occur::
   }
   z = x * y;
 
+One can also simply test by division (but careful for division-by-zero)::
+
+  z = x * y;
+  if (x != 0 && z / x != y) {
+          /* Overflow. */
+  }
+
 For 32-bit types the check is actually exact, see test in::
 
   misc/c_overflow_test.py 
@@ -1082,9 +1328,7 @@ overflowing?  If so, all such shifts would need to be replaced with::
 Switch statement
 ----------------
 
-**FIXME: what is the set of acceptable types for the switch target value
-and case values (when portability to old compilers is an issue)?  Is it
-just "int"?  What casts are most appropriate?**
+Any integral type should work as a switch argument, so avoid casting it.
 
 String handling
 ---------------
@@ -1132,6 +1376,9 @@ See separate section below.
 Setjmp, longjmp, and volatile
 =============================
 
+Volatile variables
+------------------
+
 When a local variable in the function containing a ``setjmp()`` gets changed
 between ``setjmp()`` and ``longjmp()`` there is no guarantee that the change
 is visible after a ``longjmp()`` unless the variable is declared volatile.
@@ -1167,8 +1414,25 @@ Optimizations may also cause odd situations, see e.g.:
 
 * http://blog.sam.liddicott.com/2013/09/why-are-setjmp-volatile-hacks-still.html
 
+With Emscripten a function containing ``setjmp()`` executes much more slowly
+than a function without it.  For example, for the bytecode executor the speed
+improvement of refactoring ``setjmp()`` out of the main executor function was
+around 25%:
+
+* https://github.com/svaarala/duktape/pull/370
+
+Some compilers generate incorrect code with setjmp.  Some workarounds may be
+needed (e.g. optimizations may need to be disabled completely) for functions
+containing a setjmp:
+
+* https://github.com/svaarala/duktape/issues/369
+
 To minimize the chances of the compiler handling setjmp/longjmp incorrectly,
 the cleanest approach would probable be to:
+
+* Minimize the size of functions containing a ``setjmp()``; use a wrapper
+  with just the ``setjmp()`` and an inner function with the rest of the
+  function when that's possible.
 
 * Declare all variables used in the ``setjmp()`` non-zero return case (when
   called through ``longjmp()``) as volatile, so that we don't ever rely on
@@ -1195,9 +1459,41 @@ variables, e.g.::
 
   /* ... */
 
-(As of Duktape 1.1 this has not yet been done for all setjmp/longjmp
+(As of Duktape 1.3 this has not yet been done for all setjmp/longjmp
 functions.  Rather, volatile declarations have been added where they
 seem to be needed in practice.)
+
+Limitations in setjmp() call site
+---------------------------------
+
+There are limitations to what a ``setjmp()`` call site can look like,
+see e.g.:
+
+- https://www.securecoding.cert.org/confluence/display/c/MSC22-C.+Use+the+setjmp%28%29,+longjmp%28%29+facility+securely
+
+This is fine for example::
+
+  if (DUK_SETJMP(jb) == 0) {
+          /* ... */
+  }
+
+But this is not::
+
+  /* NOT OK */
+  if (DUK_LIKELY(DUK_SETJMP(jb) == 0)) {
+          /* ... */
+  }
+
+Setjmp and floating points
+--------------------------
+
+There may be limitations on what floating point registers or state is
+actually saved and restored, see e.g.:
+
+- http://www-personal.umich.edu/~williams/archive/computation/setjmp-fpmode.html
+
+To minimize portability issues, floating point variables used in the setjmp
+longjmp path should be volatile so that they won't be stored in registers.
 
 Numeric types
 =============
@@ -1339,14 +1635,6 @@ Types used inside Duktape
   entire value stack are ``duk_size_t``.  In principle the value stack could
   be larger than 32 bits while individual activations could be limited to
   a signed 32 bit index space.
-
-* **FIXME:** normal vs. fast variables: use tight values in structs,
-  "fast" values as e.g. loop counters in fast paths (character / byte
-  iteration loops etc)
-
-* **FIXME**: flags field type (storage vs. internal APIs)
-
-* **FIXME**: avoid casting when unnecessary
 
 Formatting considerations
 -------------------------
@@ -1604,7 +1892,8 @@ arguments".  The fix is to remove the comment from inside the macro::
 Character values in char literals and strings, EBCDIC
 =====================================================
 
-**FIXME: under work**
+**FIXME: under work, while some other projects do support EBCDIC,
+EBCDIC may not be a useful portability target for Duktape.**
 
 Overview
 --------
@@ -1680,13 +1969,13 @@ Calling platform functions
 ==========================
 
 All platform function calls (ANSI C and other) are wrapped through macros
-defined in ``duk_features.h``.  For example, ``fwrite()`` calls are made
-using ``DUK_FWRITE()``.
+defined in ``duk_config.h``.  For example, ``fwrite()`` calls are made using
+``DUK_FWRITE()``.
 
 Many of these wrappers are not currently needed but some are, so it's simplest
 to wrap just about everything in case something needs to be tweaked.  As an
 example, on some old uclibc versions ``memcpy()`` is broken and can be
-replaced with ``memmove()`` in ``duk_features.h``.
+replaced with ``memmove()`` in ``duk_config.h``.
 
 The only exception is platform specific Date built-in code.  As this code is
 always platform specific and contained to the Date code, wrapping them is not
@@ -1695,7 +1984,7 @@ the Date code.
 
 The following can be used to find "leaks", accidental unwrapped calls::
 
-  $ python util/find_func_calls.py src/*.c src/*.h | \
+  $ python util/find_func_calls.py src-input/*.c src-input/*.h | \
     grep -v -i -P ^duk_ | grep -v -P '^(sizeof|va_start|va_end|va_arg)' | \
     sort | uniq
 
@@ -1709,35 +1998,20 @@ Using ``const`` for tables allows tables to compiled into the text section.
 This is important on some embedded platforms where RAM is tight but there
 is more space for code and fixed data.
 
-Feature defines
-===============
+Config options
+==============
 
-Almost all feature detection is concentrated into ``duk_features.h`` which
-considers inputs from various sources:
+All feature detection is concentrated into ``duk_config.h`` which detects
+the compiler, platform, and architecture via preprocessor defines.
 
-* ``DUK_OPT_xxx`` defines, which allow a user to request a specific feature
-  or provide a specific value (such as traceback depth)
-
-* Compiler and platform specific defines and features
-
-As a result, ``duk_features.h`` defines ``DUK_USE_xxx`` macros which enable
+As a result, ``duk_config.h`` defines ``DUK_USE_xxx`` macros which enable
 and disable specific features and provide parameter values (such as traceback
 depth).  These are the **only** feature defines which should be used in
-internal Duktape code.
-
-The only exception so far is ``DUK_PANIC_HANDLER()`` in ``duk_error.h`` which
-can be directly overridden by the user if necessary.
-
-This basic approach is complicated a bit by the fact that ``duktape.h`` must
-do some minimal platform feature detection to ensure that the public API uses
-the correct types, etc.  These are coordinated with ``duk_features.h``;
-``duk_features.h`` either uses whatever ``duktape.h`` ended up using, or does
-its own checking and ensures the two are consistent.
+internal Duktape code.  The ``duk_config.h`` defines, especially typedefs,
+are also visible for the public API header.
 
 When adding specific hacks and workarounds which might not be of interest
-to all users, add a ``DUK_OPT_xxx`` flag for them and translate it to a
-``DUK_USE_xxx`` flag in ``duk_features.h``.  If the ``DUK_OPT_xxx`` flag
-is absent, the custom behavior MUST NOT be enabled.
+to all users, add a ``DUK_USE_xxx`` flag metadata into the build.
 
 Platforms and compilers
 =======================

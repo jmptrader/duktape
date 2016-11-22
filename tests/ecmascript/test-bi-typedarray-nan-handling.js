@@ -4,7 +4,7 @@
  *  https://www.khronos.org/registry/typedarray/specs/latest/#4
  */
 
-/*@include util-typedarray.js@*/
+/*@include util-buffer.js@*/
 
 /*===
 NaN handling test
@@ -49,6 +49,9 @@ function nanHandlingTest() {
     expt = v1.getUint16(0, false /*littleEndian*/);
     sign = expt >>> 15;
     expt = (expt >> 4) & 0x7ff;
+
+    // Note: NaN normalization is allowed, and NaN sign is also platform
+    // dependent.
 
     print('sign: ' + sign);
     print('expt: ' + expt);

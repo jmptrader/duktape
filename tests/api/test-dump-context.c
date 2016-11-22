@@ -5,12 +5,16 @@ final top: 4
 ==> rc=0, result='undefined'
 ===*/
 
-static duk_ret_t test_1(duk_context *ctx) {
+static duk_ret_t test_1(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_int(ctx, 123);
 	duk_eval_string(ctx, "'foo\\u1234bar'");
 	duk_eval_string(ctx, "({ foo: 123, bar: [ 1, 2, 3 ]})");
 	duk_eval_string(ctx, "([ 1, 2, 3 ])");
-	duk_dump_context_stdout(ctx);
+	duk_push_context_dump(ctx);
+	printf("%s\n", duk_safe_to_string(ctx, -1));
+	duk_pop(ctx);
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
 	return 0;
 }

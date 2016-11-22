@@ -13,7 +13,7 @@ The default Duktape options are quite memory conservative, and significant
 Ecmascript programs can be executed with e.g. 1MB of memory.  Currently
 realistic memory targets are roughly:
 
-* 256-384kB flash memory (code) and 256kB system RAM
+* 256-384kB system flash memory (code) and 256kB system RAM
 
   - Duktape compiled with default options is feasible
 
@@ -22,7 +22,7 @@ realistic memory targets are roughly:
     hardware initialization, communications, etc; 384kB is a more
     realistic flash target
 
-* 256-384kB flash memory (code) and 128kB system RAM
+* 256-384kB system flash memory (code) and 128kB system RAM
 
   - Duktape feature options are needed to reduce memory usage
 
@@ -33,26 +33,45 @@ realistic memory targets are roughly:
     various internal structures (strings, buffers, objects), pointer
     compression, external strings, etc may need to be used
 
-* 256kB flash memory (code) and 96kB system RAM
+* 192-256kB system flash memory (code) and 96kB system RAM
 
   - Requires a bare metal system, possibly a custom C library, etc.
 
   - http://pt.slideshare.net/seoyounghwang77/js-onmicrocontrollers
 
+* 160-192kB system flash memory (code) and 64kB system RAM
+
+  - Requires a bare metal system, possibly a custom C library, etc.
+
+  - Requires use of ROM strings and objects to reduce Duktape startup
+    RAM usage (which drops to around 2-3kB with ROM strings/objects).
+
+* 128kB system flash memory (code) and 32kB system RAM
+
+  - Requires the above, and removing built-in bindings like the global
+    Object (DUK_USE_OBJECT_BUILTIN), Array (DUK_USE_ARRAY_BUILTIN), etc
+    bindings.  See stripped configuration examples, and add back whatever
+    bindings are absolutely necessary.
+
 There are four basic goals for low memory optimization:
 
 1. Reduce Duktape code (flash) footprint.  This is currently a low priority
    item because flash size doesn't seem to be a bottleneck for most users.
+   Techniques includes dropping optional Duktape functionality and compiler
+   options.
 
 2. Reduce initial memory usage of a Duktape heap.  This provides a baseline
    for memory usage which won't be available for user code (technically some
    memory can be reclaimed by deleting some built-ins after heap creation).
+   Techniques include pointer compression, external strings, ROM-based
+   strings and objects, and reducing built-in object and property count.
 
 3. Minimize the growth of the Duktape heap relative to the scope and
    complexity of user code, so that as large programs as possible can be
    compiled and executed in a given space.  Important contributing factors
    include the footprint of user-defined Ecmascript and Duktape/C functions,
-   the size of compiled bytecode, etc.
+   the size of compiled bytecode, etc.  Techniques include reducing object
+   and property count for e.g. function objects.
 
 4. Make remaining memory allocations as friendly as possible for the memory
    allocator, especially a pool-based memory allocator.  Concretely, prefer
@@ -61,9 +80,93 @@ There are four basic goals for low memory optimization:
 The following genconfig option file template enables most low memory related
 option: ``config/examples/low_memory.yaml``.  It doesn't enable pointer
 compression because that always requires some application specific code.
+More aggressive feature stripping examples are in
+``config/examples/low_memory_strip.yaml``.
 
-Suggested feature options
+Optimizing code footprint
 =========================
+
+The best options for reducing code footprint depend obviously on your compiler.
+The footprint difference between different options can be quite large, sometimes
+over 20%, so for targets with code footprint limitations it's worth it to
+investigate the best compiler specific options.
+
+Gcc size optimization
+---------------------
+
+Based on: https://software.intel.com/en-us/blogs/2013/01/17/x86-gcc-code-size-optimizations.
+
+Default ``Makefile.cmdline`` on x64 which uses ``-O2 -fomit-frame-pointer``::
+
+       text     data      bss      dec      hex  filename
+     231549     1184       56   232789    38d55  duk
+
+Adding ``-flto``::
+
+       text     data      bss      dec      hex  filename
+     219825     1160       56   221041    35f71  duk
+
+Adding ``-flto -fno-asynchronous-unwind-tables``::
+
+       text     data      bss      dec      hex  filename
+     186745     1160       56   187961    2de39  duk
+
+Adding ``-flto -fno-asynchronous-unwind-tables -ffunction-sections -Wl,--gc-sections``::
+
+       text     data      bss      dec      hex  filename
+     186666     1144       56   187866    2ddda  duk
+
+Adding an explicit ``-fno-stack-protector -fno-stack-check`` may also have an effect.
+
+Stripping unused API functions
+------------------------------
+
+If you compile and link your application and Duktape statically, you can
+often strip away any Duktape API functions which are not actually used by
+your application or Duktape.  Doing so requires compiler specific steps,
+but see for example:
+
+- http://stackoverflow.com/questions/6687630/how-to-remove-unused-c-c-symbols-with-gcc-and-ld
+
+Example using GCC: compile the Duktape command line utility without removing
+unused API symbols::
+
+    $ gcc -o duk -Os -pedantic -std=c99 -Wall -fstrict-aliasing \
+          -fomit-frame-pointer -I./src src/duktape.c \
+          examples/cmdline/duk_cmdline.c -lm
+    $ size duk
+       text     data      bss      dec      hex  filename
+     231079     1184       56   232319    38b7f  duk
+
+Add GCC specific options to remove unused symbols::
+
+    # With -fdata-sections -ffunction-sections -Wl,--gc-sections:
+    $ gcc -o duk -Os -pedantic -std=c99 -Wall -fstrict-aliasing \
+          -fomit-frame-pointer -I./src -fdata-sections \
+          -ffunction-sections -Wl,--gc-sections \
+          src/duktape.c examples/cmdline/duk_cmdline.c -lm
+    $ size duk
+       text     data      bss      dec      hex  filename
+     222743     1152       48   223943    36ac7  duk
+
+Here the difference is ~8kB on x64.  For the dist Makefile.hello example,
+which uses very few public API calls, the difference is ~12kB.
+
+Miscellaneous
+-------------
+
+* On some low memory targets only libc features which are actually used get
+  pulled into the binary being built.  In such cases it may be useful to
+  avoid calling platform sprintf/sscanf because they may be surprisingly
+  large (>20 kB).  You can use ``extras/minimal-printf`` instead.
+
+* Math functions can sometimes have a relatively large footprint (15-20 kB),
+  usually from trigonometric and other transcendental functions.  You can
+  stub out unnecessary functions in ``duk_config.h``.  Note, however, that
+  Duktape internals at present depend on a few Math functions like ``DUK_FMOD()``.
+
+Suggested options
+=================
 
 * Use the default memory management settings: although reference counting
   increases heap header size, it also reduces memory usage fluctuation
@@ -76,13 +179,15 @@ Suggested feature options
 
 * Reduce error handling footprint with one or more of:
 
-  - ``DUK_OPT_NO_AUGMENT_ERRORS``
+  - ``#undef DUK_USE_AUGMENT_ERRORS``
 
-  - ``DUK_OPT_NO_TRACEBACKS``
+  - ``#undef DUK_USE_TRACEBACKS``
 
-  - ``DUK_OPT_NO_VERBOSE_ERRORS``
+  - ``#undef DUK_USE_VERBOSE_ERRORS``
 
-  - ``DUK_OPT_NO_PC2LINE``
+  - ``#undef DUK_USE_VERBOSE_EXECUTOR_ERRORS``
+
+  - ``#undef DUK_USE_PC2LINE``
 
 * Use slower but more compact lexer algorithm (saves on code footprint):
 
@@ -100,27 +205,29 @@ Suggested feature options
 
   - ``#undef DUK_USE_JSON_EATWHITE_FASTPATH``
 
+* If you don't need Node.js Buffer and Khronos/ES6 typed array support, use:
+
+  - ``#undef DUK_USE_BUFFEROBJECT_SUPPORT``
+
 * If you don't need the Duktape-specific additional JX/JC formats, use:
 
-  - ``DUK_OPT_NO_JX``
+  - ``#undef DUK_USE_JX``
 
-  - ``DUK_OPT_NO_JC``
+  - ``#undef DUK_USE_JC``
 
 * Features borrowed from Ecmascript E6 can usually be disabled:
 
-  - ``DUK_OPT_NO_ES6_OBJECT_SETPROTOTYPEOF``
+  - ``#undef DUK_USE_ES6_OBJECT_SETPROTOTYPEOF``
 
-  - ``DUK_OPT_NO_ES6_OBJECT_PROTO_PROPERTY``
+  - ``#undef DUK_USE_ES6_OBJECT_PROTO_PROPERTY``
 
-  - ``DUK_OPT_NO_ES6_PROXY``
+  - ``#undef DUK_USE_ES6_PROXY``
 
 * If you don't need regexp support, use:
 
-  - ``DUK_OPT_NO_REGEXP_SUPPORT``
+  - ``#undef DUK_USE_REGEXP_SUPPORT``
 
 * Disable unnecessary parts of the C API:
-
-  - ``DUK_OPT_NO_BYTECODE_DUMP_SUPPORT``
 
   - ``#undef DUK_USE_BYTECODE_DUMP_SUPPORT``
 
@@ -128,27 +235,33 @@ Suggested feature options
   debug log lines.  If you're running with debugging enabled, use e.g.
   the following to reduce this overhead:
 
-  - ``-DDUK_OPT_DEBUG_BUFSIZE=2048``
+  - ``#define DUK_USE_DEBUG_BUFSIZE 2048``
+
+* If strict Unicode support is not critical in your application, you can:
+
+  - Strip the ``UnicodeData.txt`` and ``SpecialCasing.txt`` files manually.
+    There are example files in the distributable for Unicode data limited
+    to 8-bit codepoints.
+
+  - Provide the stripped files to ``configure.py`` to reduce Unicode
+    table size.
+
+  - Possible footprint savings are about 2-3kB.
 
 More aggressive options
 =======================
 
-**These options are experimental in Duktape 1.1, i.e. the may change
-in an incompatible manner in Duktape 1.2.**
-
-The following may be needed for very low memory environments (e.g. 128kB
+The following may be needed for very low memory environments (e.g. 96-128kB
 system RAM):
 
 * Consider using lightweight functions for your Duktape/C bindings and to
   force Duktape built-ins to be lightweight functions:
 
-  - ``DUK_OPT_LIGHTFUNC_BUILTINS``
+  - ``#define DUK_USE_LIGHTFUNC_BUILTINS``
 
 * If code footprint is a significant issue, disabling reference counting
   reduces code footprint by several kilobytes at the cost of more RAM
   fluctuation:
-
-  - ``DUK_OPT_NO_REFERENCE_COUNTING``
 
   - ``#undef DUK_USE_REFERENCE_COUNTING``
 
@@ -157,37 +270,39 @@ system RAM):
 * Enable other 16-bit fields to reduce header size; these are typically
   used together (all or none):
 
-  - ``DUK_OPT_REFCOUNT16``
+  - ``#define DUK_USE_REFCOUNT16``
 
-  - ``DUK_OPT_STRHASH16``
+  - ``#define DUK_USE_STRHASH16``
 
-  - ``DUK_OPT_STRLEN16``
+  - ``#define DUK_USE_STRLEN16``
 
-  - ``DUK_OPT_BUFLEN16``
+  - ``#define DUK_USE_BUFLEN16``
 
-  - ``DUK_OPT_OBJSIZES16``
+  - ``#define DUK_USE_OBJSIZES16``
+
+  - ``#undef DUK_USE_HSTRING_CLEN``
 
 * Enable heap pointer compression, assuming pointers provided by your allocator
   can be packed into 16 bits:
 
-  - ``DUK_OPT_HEAPPTR16``
+  - ``#define DUK_USE_HEAPPTR16``
 
-  - ``DUK_OPT_HEAPPTR_ENC16(udata,p)``
+  - ``#define DUK_USE_HEAPPTR_ENC16(udata,p) ...``
 
-  - ``DUK_OPT_HEAPPTR_DEC16(udata,x)``
+  - ``#define DUK_USE_HEAPPTR_DEC16(udata,x) ...``
 
-  - Note: you cannot currently enable Duktape debug prints (DUK_OPT_DEBUG and
-    DUK_OPT_DPRINT etc) when heap pointer compression is enabled.
+  - Note: you cannot currently enable Duktape debug prints (DUK_USE_DEBUG)
+    when heap pointer compression is enabled.
 
 * Enable data pointer compression if possible.  Note that these pointers can
   point to arbitrary memory locations (outside Duktape heap) so this may not
   be possible even if Duktape heap pointers can be compressed:
 
-  - ``DUK_OPT_DATAPTR16``
+  - ``#define DUK_USE_DATAPTR16``
 
-  - ``DUK_OPT_DATAPTR_ENC16(udata,p)``
+  - ``#define DUK_USE_DATAPTR_ENC16(udata,p) ...``
 
-  - ``DUK_OPT_DATAPTR_DEC16(udata,x)``
+  - ``#define DUK_USE_DATAPTR_DEC16(udata,x) ...``
 
   - **UNIMPLEMENTED AT THE MOMENT**
 
@@ -195,11 +310,11 @@ system RAM):
   around 200kB of code, so assuming an alignment of 4 this may only be
   possible if there is less than 56kB of user code:
 
-  - ``DUK_OPT_FUNCPTR16``
+  - ``#define DUK_USE_FUNCPTR16``
 
-  - ``DUK_OPT_FUNCPTR_ENC16(udata,p)``
+  - ``#define DUK_USE_FUNCPTR_ENC16(udata,p) ...``
 
-  - ``DUK_OPT_FUNCPTR_DEC16(udata,x)``
+  - ``#define DUK_USE_FUNCPTR_DEC16(udata,x) ...``
 
   - **UNIMPLEMENTED AT THE MOMENT**
 
@@ -208,23 +323,86 @@ system RAM):
   memory behavior more predictable and avoids a large continuous allocation
   used by the default string table:
 
-  - ``DUK_OPT_STRTAB_CHAIN``
+  - ``#define DUK_USE_STRTAB_CHAIN``
 
-  - ``DUK_OPT_STRTAB_CHAIN_SIZE=128`` (other values possible also)
+  - ``#define DUK_USE_STRTAB_CHAIN_SIZE 128`` (other values possible also)
 
 * Use "external" strings to allocate most strings from flash (there are
   multiple strategies for this, see separate section):
 
-  - ``DUK_OPT_EXTERNAL_STRINGS``
+  - ``#define DUK_USE_EXTERNAL_STRINGS``
 
-  - ``DUK_OPT_EXTSTR_INTERN_CHECK(udata,ptr,len)``
+  - ``#define DUK_USE_EXTSTR_INTERN_CHECK(udata,ptr,len) ...``
 
-  - ``DUK_OPT_EXTSTR_FREE(udata,ptr)``
+  - ``#define DUK_USE_EXTSTR_FREE(udata,ptr) ...``
+
+  - As of Duktape 1.5 an alternative to external strings is to move strings
+    (including the string heap header) to ROM, see below.
 
 * Enable struct packing in compiler options if your platform doesn't have
   strict alignment requirements, e.g. on gcc/x86 you can:
 
   - ``-fpack-struct=1`` or ``-fpack-struct=2``
+
+The following may be appropriate when even less memory is available
+(e.g. 64kB system RAM):
+
+* Consider moving built-in strings and objects into ROM (a read-only data
+  section):
+
+  - ``DUK_USE_ROM_STRINGS`` and ``DUK_USE_ROM_OBJECTS`` (define both).
+    See: ``config/examples/rom_builtins.yaml``.
+
+  - ``DUK_USE_ROM_GLOBAL_CLONE`` or ``DUK_USE_ROM_GLOBAL_INHERIT`` if
+    a writable global object is needed.  ``DUK_USE_ROM_GLOBAL_INHERIT``
+    is more memory efficient: it creates a writable (empty) global object
+    which inherits from the ROM global object.
+
+  - Rerun ``configure.py`` with ``--rom-support`` to create prepared
+    sources with support for ROM builtins.  ROM builtin support is not
+    enabled by default because it increases the size of ``duktape.c``
+    considerably.  Add the option ``--rom-auto-lightfunc`` to convert
+    built-in function properties into lightfuncs to reduce ROM footprint.
+    (See repo Makefile ``ajduk-rom`` target for some very simple examples.)
+
+  - Moving built-ins into ROM makes them read-only which has some side
+    effects.  Some side effects are technical compliance issues while
+    others have practical impact and may prevent running some existing
+    scripts.  The following testcases illustrate some of the issues:
+
+    + ``tests/ecmascript/test-dev-rom-builtins-1.js``
+
+    + ``tests/api/test-dev-rom-builtins-1.c``
+
+  - When using pointer compression you need to add support for compressing
+    ROM strings, see ``doc/objects-in-code-section.rst`` and a concrete
+    example in ``examples/cmdline/duk_cmdline_ajduk.c``.
+
+  - See ``doc/objects-in-code-section.rst`` for technical details and
+    current limitations.
+
+* Consider also moving your own built-in objects and strings into ROM:
+
+  - User strings and objects can also be moved into ROM.  You can also
+    modify default Duktape built-ins, adding and removing properties, etc.
+    For more details, see:
+
+    + ``util/example_user_builtins1.yaml``: examples of user builtins
+
+    + ``src-input/builtins.yaml``: documents some more format details
+
+    + Repo Makefile ``ajduk-rom`` target: illustrates how to run
+      ``configure.py`` with user builtins
+
+* Consider using lightfuncs for representing function properties of ROM
+  built-ins.
+
+  - For custom built-ins you can use a "lightfunc" type for a property
+    value directly.
+
+  - You can also request automatic lightfunc conversion for built-in
+    function properties using ``--rom-auto-lightfunc``.  This saves
+    around 15kB for Duktape built-ins.
 
 Notes on pointer compression
 ============================
@@ -245,7 +423,14 @@ Pointer compression can be quite slow because often memory mappings are not
 linear, so the required operations are not trivial.  NULL also needs specific
 handling.
 
-External string strategies (DUK_OPT_EXTSTR_INTERN_CHECK)
+When ROM object/string support is enabled, pointer compression and
+decompression must support ROM pointer compression.  This is done by
+reserving a range of 16-bit compressed pointer values to represent
+ROM pointers, and to use a ROM pointer table to compress/decompress
+ROM pointers.  See ``examples/cmdline/duk_cmdline_ajduk.c`` for an
+example.
+
+External string strategies (DUK_USE_EXTSTR_INTERN_CHECK)
 ========================================================
 
 The feature can be used in two basic ways:
@@ -266,10 +451,11 @@ Note that:
   is counterproductive because the external pointer takes more room than the
   character data.
 
-The Duktape built-in strings are available from build metadata:
+The Duktape built-in strings are available from prepared source metadata:
 
-* ``dist/duk_build_meta.json``, the ``builtin_strings_base64`` contains
-  the byte exact strings used, encoded with base-64.
+* For example, ``dist/src/duk_source_meta.json``, the
+  ``builtin_strings_base64`` contains the byte exact strings used, encoded
+  with base-64.
 
 Strings used by application C and Ecmascript code can be extracted with
 various methods.  The Duktape main repo contains an example script for
@@ -313,11 +499,11 @@ of pool usage, allocated bytes, waste bytes, etc.  It also provides some
 tools to optimize pool counts for one or multiple application "profiles".
 See detailed description below.
 
-You can also get a dump of Duktape's internal struct sizes by enabling
-``DUK_OPT_DPRINT``; Duktape will debug print struct sizes when a heap is
-created.  The struct sizes will give away the minimum size needed by strings,
-buffers, objects, etc.  They will also give you ``sizeof(duk_heap)`` which
-is a large allocation that you should handle explicitly in pool tuning.
+You can also get a dump of Duktape's internal struct sizes by enabling debug
+prints; Duktape will debug print struct sizes when a heap is created.  The
+struct sizes will give away the minimum size needed by strings, buffers,
+objects, etc.  They will also give you ``sizeof(duk_heap)`` which is a large
+allocation that you should handle explicitly in pool tuning.
 
 Finally, you can look at existing projects and what kind of pool tuning
 they do.  AllJoyn.js has a manually tuned pool allocator which may be a
@@ -355,7 +541,7 @@ Important notes
 * Before optimizing pools, you should select Duktape feature options
   (especially low memory options) carefully.
 
-* It may be useful to use DUK_OPT_GC_TORTURE to ensure that there is no
+* It may be useful to use DUK_USE_GC_TORTURE to ensure that there is no
   slack in memory allocations; reference counting frees unreachable values
   but does not handle loops.  When GC torture is enabled, Duktape will run
   a mark-and-sweep for every memory allocation.  High-water-mark values
@@ -556,7 +742,7 @@ Use the following command to run the optimization::
 
   $ rm -rf /tmp/out; mkdir /tmp/out
   $ python examples/alloc-logging/pool_simulator.py \
-      --out-dir /tmp/out \
+      --out-dir /tmp/out \
       --alloc-log /tmp/duk-alloc-log.txt \
       --pool-config examples/alloc-logging/pool_config_1.json \
       --out-pool-config /tmp/tight_borrow.json \
@@ -812,13 +998,13 @@ Normal function representation
 
 In Duktape 1.0.0 functions are represented as:
 
-* A ``duk_hcompiledfunction`` (a superset of ``duk_hobject``): represents
-  an Ecmascript function which may have a set of properties, and points to
+* A ``duk_hcompfuncn`` (a superset of ``duk_hobject``): represents an
+  Ecmascript function which may have a set of properties, and points to
   the function's data area (bytecode, constants, inner function refs).
 
-* A ``duk_hnativefunction`` (a superset of ``duk_hobject``): represents
-  a Duktape/C function which may also have a set of properties.  A pointer
-  to the C function is inside the ``duk_hnativefunction`` structure.
+* A ``duk_hnatfunc`` (a superset of ``duk_hobject``): represents a
+  Duktape/C function which may also have a set of properties.  A pointer
+  to the C function is inside the ``duk_hnatfunc`` structure.
 
 In Duktape 1.1.0 a lightfunc type is available:
 
@@ -857,7 +1043,7 @@ functions, Duktape/C function are already stripped of unnecessary properties
 and don't have an automatic prototype object.
 
 Even so, there are close to 200 built-in functions, so the footprint of
-the ``duk_hnativefunction`` objects is around 14-16kB, not taking into account
+the ``duk_hnatfunc`` objects is around 14-16kB, not taking into account
 allocator overhead.
 
 Duktape/C lightfuncs

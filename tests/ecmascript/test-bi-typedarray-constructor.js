@@ -2,7 +2,7 @@
  *  TypedArray constructor
  */
 
-/*@include util-typedarray.js@*/
+/*@include util-buffer.js@*/
 
 /*---
 {
@@ -1696,6 +1696,57 @@ function stringArgumentTest() {
 try {
     print('string argument');
     stringArgumentTest();
+} catch (e) {
+    print(e.stack || e);
+}
+
+/*===
+plain buffer argument
+object true |00666f6fff| |00666f6fff| object false false
+|ff666f6fff| |ff666f6fff| [object ArrayBuffer]
+RangeError
+object true |00666f6fffab| |00666f6fffab| object false false
+|ffff6f6fffab| |ffff6f6fffab| [object ArrayBuffer]
+===*/
+
+/* Plain buffer behavior for typed array constructor has changed over time.
+ * In Duktape 2.x a plain buffer is treated like ArrayBuffer, i.e. the view
+ * is constructed over the plain buffer.  The .buffer property is set to an
+ * object coerced version of the plain buffer (at least for now).
+ */
+
+function plainBufferArgumentTest() {
+    var buf, view;
+
+    function test(buf, view) {
+        print(typeof buf, isPlainBuffer(buf), Duktape.enc('jx', buf), Duktape.enc('jx', view), typeof view.buffer, isPlainBuffer(view.buffer), buf === view.buffer);
+        view[0] = 0xffffffff;  // demonstrate view shares underlying buffer; endian neutral value
+        print(Duktape.enc('jx', buf), Duktape.enc('jx', view), Object.prototype.toString.call(view.buffer));
+    }
+
+    // Plain buffer treated like ArrayBuffer.
+
+    buf = Duktape.dec('hex', '00666f6fff');
+    view = new Uint8Array(buf);
+    test(buf, view);
+
+    try {
+        // Fails because input is not a multiple of 2 bytes.
+        buf = Duktape.dec('hex', '00666f6fff');
+        view = new Int16Array(buf);
+        test(buf, view);
+    } catch (e) {
+        print(e.name);
+    }
+
+    buf = Duktape.dec('hex', '00666f6fffab');
+    view = new Int16Array(buf);
+    test(buf, view);
+}
+
+try {
+    print('plain buffer argument');
+    plainBufferArgumentTest();
 } catch (e) {
     print(e.stack || e);
 }

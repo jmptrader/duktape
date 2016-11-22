@@ -949,10 +949,51 @@ Released
   Error.prototype.toString with a function that accessed the 'lineNumber'
   or 'fileName' property of the error (GH-254)
 
-Planned
-=======
+1.2.4 (2015-09-06)
+------------------
 
-1.3.0 (2015-XX-XX)
+* Fix a try-finally finalizer side effect issue by scrubbing TRYCATCH catch
+  registers before executing the try code block (GH-287)
+
+* Fix missing activation lookup from call handling after an Arguments object
+  was created, this could in theory lead to memory unsafe behavior (GH-305)
+
+* Avoid including <windows.h> for application build (GH-312)
+
+1.2.5 (2015-11-23)
+------------------
+
+* Fix duk_is_primitive() return value for invalid index, was incorrectly 1
+  (GH-337)
+
+* Fix assignment expression handling of the right-hand-side value when that
+  value is a register-bound variable which is used and mutated in the rest
+  of the expression (GH-381)
+
+* Remove octal autodetection in parseInt(), also fixes incorrect octal
+  autodetection in e.g. "parseInt('00e1', 16)" (GH-413, GH-414)
+
+* Fix a bug in number conversion resolving a few (but not all) corner case
+  rounding issues (GH-264)
+
+* Fix a segfault (and assertion error) caused by compiler intermediate value
+  handling bug; the bug was triggered when a temporary register was required
+  by the compiler, but an existing "intermediate value" referred to a const
+  instead of a register value (GH-449)
+
+1.2.6 (2016-04-19)
+------------------
+
+* Fix potentially memory unsafe behavior when a refcount-triggered finalizer
+  function rescues an object; the memory unsafe behavior doesn't happen
+  immediately which makes the cause of the unsafe behavior difficult to
+  diagnose (GH-531)
+
+* Fix debugger detach handling bug which could cause the debugger to be
+  re-entered recursively during detach handling; this could cause various
+  difficult to diagnose side effects (GH-599, GH-597, GH-591)
+
+1.3.0 (2015-09-12)
 ------------------
 
 * Introduce an external duk_config.h header which provides all platform and
@@ -962,6 +1003,21 @@ Planned
 * Add support for Node.js Buffer API (GH-152)
 
 * Add support for Khronos/ES6 TypedArray API (subset of ES6 API) (GH-151)
+
+* Add duk_push_external_buffer(), duk_is_external_buffer(), and
+  duk_config_buffer() which provide support for external buffers, i.e. buffer
+  values which point to a user memory area allocated outside of Duktape heap
+  (for example, an externally allocated frame buffer) (GH-153)
+
+* Add duk_push_buffer_object() which allows pushing of all buffer object and
+  buffer view types (GH-190)
+
+* Add duk_get_buffer_data() and duk_require_buffer_data() API calls which
+  accept both plain buffer and buffer object values (GH-190)
+
+* Add duk_steal_buffer() API call which allows user code to steal the current
+  allocation of a dynamic buffer which is useful for some buffer manipulation
+  algorithms (GH-129)
 
 * Add support for module.exports in the module loader framework (GH-201)
 
@@ -998,13 +1054,6 @@ Planned
 * Add Proxy object support to 'instanceof' operator (without support for
   'getPrototypeOf' trap) (GH-182)
 
-* Add duk_steal_buffer() API call which allows user code to steal the current
-  allocation of a dynamic buffer which is useful for some buffer manipulation
-  algorithms (GH-129)
-
-* Add duk_get_buffer_data() and duk_require_buffer_data() API calls which
-  accept both plain buffer and buffer object values (GH-190)
-
 * Add explicit 'this' binding for C eval calls so that strict eval code also
   gets 'this' bound to the global object (GH-164)
 
@@ -1036,12 +1085,14 @@ Planned
   places (GH-209)
 
 * Sizeof(duk_hbuffer_dynamic) reduced from 16 to 12 bytes for low memory
-  builds using heap compression (GH-209)
+  builds which employ heap compression (GH-209)
 
 * Increase try-catch register limit (from 511 to 262143) to fix try-catch
   out-of-register issues for most code (GH-145)
 
-* Use deep C stack by default also for OSX/iPhone (GH-226)
+* Remove DUK_OPT_DEEP_C_STACK (and DUK_USE_DEEP_C_STACK) in favor of explicit
+  DUK_USE_xxx config options for native recursion limits; C stacks are assumed
+  to be deep by default for all targets including OSX/iPhone (GH-165, GH-226)
 
 * Make Proxy internal _Target and _Handler properties immutable (non-writable
   and non-configurable) (GH-237)
@@ -1055,11 +1106,7 @@ Planned
   structure (GH-209)
 
 * Add example debug transport with local dvalue encoding and decoding, also
-  provides a C example for encoding and decoding dvalues
-
-* Remove DUK_OPT_DEEP_C_STACK (and DUK_USE_DEEP_C_STACK) in favor of explicit
-  DUK_USE_xxx config options for native recursion limits; C stacks are assumed
-  to be deep by default for all targets (GH-165)
+  provides a C example for encoding and decoding dvalues (GH-251)
 
 * Provide at least 10 callstack entries for error handling (Duktape.errCreate)
   when callstack limit is reached (GH-191)
@@ -1100,6 +1147,9 @@ Planned
 * Fix JX parsing bug which caused strings like "1Infinity" to be parsed as
   negative infinity instead of causing a SyntaxError (GH-247)
 
+* Fix duk_is_primitive() return value for invalid index, was incorrectly 1
+  (GH-337)
+
 * Fix compile error from array fast path when using low memory options
   (GH-174)
 
@@ -1109,16 +1159,939 @@ Planned
 * Fix a bug in number conversion resolving a few (but not all) corner case
   rounding issues (GH-264)
 
+* Fix IAR Compiler compilation error caused by volatiles in argument list
+  (GH-318)
+
 * Fix harmless MSVC warnings when using DUK_OPT_FASTINT on x86 (GH-172)
 
 * Fix harmless MSVC warnings for size_t casts on x64 (GH-177)
 
 * Avoid including <windows.h> for application build (GH-312)
 
+1.3.1 (2015-11-27)
+------------------
+
+* Fix assignment expression handling of the right-hand-side value when that
+  value is a register-bound variable which is used and mutated in the rest
+  of the expression (GH-381)
+
+* Fix nested property assignment handling (GH-427, GH-428)
+
+* Fix property access expression handling when a variable holding the base
+  value is mutated by other parts of the expression, in both LHS and RHS
+  positions (GH-429)
+
+* Remove octal autodetection in parseInt(), also fixes incorrect octal
+  autodetection in e.g. "parseInt('00e1', 16)" (GH-413, GH-414)
+
+* Fix a segfault (and assertion error) caused by compiler intermediate value
+  handling bug; the bug was triggered when a temporary register was required
+  by the compiler, but an existing "intermediate value" referred to a const
+  instead of a register value (GH-449)
+
+1.3.2 (2016-01-11)
+------------------
+
+* Fix segfault (assertion failure when asserts enabled) in
+  String.prototype.replace() when match argument is RegExp.prototype
+  (GH-492, GH-495)
+
+* Fix a bogus trailing semicolon in the duk_push_buffer() API macro which
+  caused compilation errors if duk_push_buffer() was e.g. part of a comma
+  expression (GH-500, GH-501)
+
+1.3.3 (2016-04-17)
+------------------
+
+* Fix potentially memory unsafe behavior when a refcount-triggered finalizer
+  function rescues an object; the memory unsafe behavior doesn't happen
+  immediately which makes the cause of the unsafe behavior difficult to
+  diagnose (GH-531)
+
+* Fix memory unsafe behavior when an external plain buffer was allocated
+  with heap pointer compression enabled (DUK_USE_HEAPPTR16) (GH-618)
+
+1.4.0 (2016-01-10)
+------------------
+
+* Add support for using C++ exceptions instead of setjmp()/longjmp() to
+  propagate errors inside Duktape, enabled using DUK_OPT_CPP_EXCEPTIONS
+  (DUK_USE_CPP_EXCEPTIONS); this change allows C++ code to use scope-based
+  resource management (automatic destructor calls) in Duktape/C functions
+  with the cleanup code executing on errors (GH-63, GH-75, GH-499)
+
+* Add minimal support for "const" declarations with non-standard semantics,
+  intended mainly for minimal compatibility with existing code using "const"
+  (GH-360)
+
+* Add a human readable summary of object/key for rejected property operations
+  and function calls to make error messages more useful for expressions like
+  "null.foo = 123" and "null()" (GH-210, GH-405, GH-417)
+
+* Add a debugger Throw notify for errors about to be thrown, and an option
+  to automatically pause before an uncaught error is thrown (GH-286, GH-347)
+
+* Add a debugger Detaching notify which informs a debug client of an orderly
+  (or non-orderly) pending detach (GH-423, GH-430, GH-434)
+
+* Allow debugger detached callback to call duk_debugger_attach(), previously
+  this clobbered some internal state (GH-399)
+
+* Add defines DUK_DEFPROP_{SET,CLEAR}_{WRITABLE,ENUMERABLE,CONFIGURABLE} for
+  duk_def_prop() to improve call site readability (GH-421)
+
+* Add convenience API calls to detect specific error subtypes, e.g.
+  duk_is_eval_error() (GH-340, GH-433)
+
+* Make Error instance .filename, .lineNumber, and .stack directly writable
+  to match V8 and Spidermonkey behavior; the previous behavior is provided
+  by polyfills/duktape-error-setter-nonwritable.js (GH-390)
+
+* Accept a plain buffer in typed array constructors with same behavior as
+  for Duktape.Buffer arguments (use as a value initializer) (GH-484)
+
+* Zero buffer data in ArrayBuffer and typed array constructors even when
+  DUK_USE_ZERO_BUFFER_DATA is not set (default is set) to respect explicit
+  zeroing guarantee of Khronos/ES6 (GH-484)
+
+* Add duk_require_function() and duk_require_callable() (GH-441)
+
+* Improve error message verbosity for API index check calls, duk_require_xxx()
+  calls, and Array iterator calls (GH-441)
+
+* Improve error object .fileName and .lineNumber attribution: if a callstack
+  function is missing a .fileName property, scan the callstack until a
+  function with a .fileName is found which improves error reporting for e.g.
+  "[1,2,3].forEach(null)" (GH-455)
+
+* Provide a stronger finalizer re-entry guarantee than before: a finalizer
+  is called exactly once (at the latest in heap destruction) unless the
+  target object is rescued, in which case the finalizer is called once per
+  "rescue cycle" (GH-473)
+
+* Better finalizer behavior for heap destruction: finalized objects may
+  create new finalizable objects whose finalizers will also be called
+  (GH-473)
+
+* Add a second argument to finalizer calls, a boolean value which is true
+  when the finalizer is called during heap destruction as part of forced
+  finalization; the finalized object cannot be rescued by the finalizer
+  in such cases (GH-473)
+
+* Add a combined duktape.c without #line directives into the dist package,
+  as it is a useful alternative in some environments (GH-363)
+
+* Add a short term workaround for case sensitive RegExp performance using a
+  128kB canonicalization lookup table; the workaround is disabled by default
+  because of the relatively large code footprint, enable using
+  DUK_OPT_REGEXP_CANON_WORKAROUND or DUK_USE_REGEXP_CANON_WORKAROUND if
+  editing duk_config.h directly (GH-411)
+
+* Add a fastint downgrade check for yield/resume values (GH-482)
+
+* Improve error message for source code UTF-8 decode error (GH-504, GH-506)
+
+* Fix a segfault (and assertion error) caused by compiler intermediate value
+  handling bug; the bug was triggered when a temporary register was required
+  by the compiler, but an existing "intermediate value" referred to a const
+  instead of a register value (GH-449)
+
+* Fix compile warnings for gcc/clang -Wcast-qual (GH-426)
+
+* Fix "debugger" statement line number off-by-one so that the debugger now
+  correctly pauses on the debugger statement rather than after it (GH-347)
+
+* Fix assignment expression handling of the right-hand-side value when that
+  value is a register-bound variable which is used and mutated in the rest
+  of the expression (GH-381)
+
+* Fix nested property assignment handling (GH-427, GH-428)
+
+* Fix property access expression handling when a variable holding the base
+  value is mutated by other parts of the expression, in both LHS and RHS
+  positions (GH-429)
+
+* Fix Unix local time offset handling which caused issues at least on RISC
+  OS (GH-406, GH-407)
+
+* Fix a bug in stack trace ellipsis ("[...]") handling: previously the
+  ellipsis might be emitted up to 2 callstack levels too early because
+  the presence of a compilation error and/or a C call site was not taken
+  into account in stack trace creation (GH-455)
+
+* Fix a bogus trailing semicolon in the duk_push_buffer() API macro which
+  caused compilation errors if duk_push_buffer() was e.g. part of a comma
+  expression (GH-500, GH-501)
+
+* Fix segfault (assertion failure when asserts enabled) in
+  String.prototype.replace() when match argument is RegExp.prototype
+  (GH-492, GH-495)
+
+* Remove octal autodetection in parseInt(), also fixes incorrect octal
+  autodetection in e.g. "parseInt('00e1', 16)" (GH-413, GH-414)
+
+* Fix base64 decode reject for whitespace between padding characters
+  (e.g. "Zm= =") (GH-465)
+
+* Internal performance improvement: rework RETURN opcode handling to avoid
+  longjmp() calls, improving performance slightly on ordinary platforms and
+  significantly on Emscripten (GH-342, GH-345)
+
+* Internal performance improvement: rework BREAK and CONTINUE opcode handling
+  to avoid longjmp() calls, improving performance slightly on ordinary
+  platforms and significantly on Emscripten (GH-348)
+
+* Internal performance improvement: improve bytecode emitted when compiling
+  assignment statements with an identifier left-hand-side value, especially
+  when the assignment is a top level expression like "x = y + z;" (GH-380)
+
+* Internal performance improvement: split bytecode executor and call handling
+  into an inner and outer function, with the outer function containing a
+  setjmp/longjmp catch point and the inner function free of setjmp/longjmp
+  (GH-369, GH-370, GH-498)
+
+* Internal performance improvement: change value stack initialization policy
+  so that values above current value stack top are set to "undefined" instead
+  of "unused" to improve call performance (GH-389)
+
+* Internal performance improvement: use a separate 'unused' tag instead of a
+  sub-type of 'undefined' to e.g. mark gaps in arrays (GH-396)
+
+* Internal performance improvement: rework "effective this" handling for
+  better call performance (GH-397)
+
+* Internal performance improvement: improve duk_push_this() performance by
+  direct value stack access (GH-403)
+
+* Internal performance improvement: faster computation of string UTF-8
+  character length in string interning (GH-422)
+
+* Internal performance improvement: change default internal string hash
+  algorithm to a faster algorithm adapted from Lua/djb2 hash, with the
+  previous algorithm (based on Murmurhash2) available using a config
+  option (GH-139, GH-432)
+
+* Internal performance improvement: optimize internal refcount handling
+  macros (GH-394)
+
+* Internal performance improvement: improve JSON.stringify() slow path
+  indentation and loop detection performance (GH-444, GH-446)
+
+* Internal performance improvement: improve JSON.stringify() fast path
+  by allowing indent value or gap string and by supporting JX/JC in the
+  fast path (GH-445)
+
+* Internal performance improvement: add fast paths for hex and base64
+  encoding/decoding (GH-465, GH-467, GH-471)
+
+1.4.1 (2016-04-19)
+------------------
+
+* Fix potentially memory unsafe behavior when a refcount-triggered finalizer
+  function rescues an object; the memory unsafe behavior doesn't happen
+  immediately which makes the cause of the unsafe behavior difficult to
+  diagnose (GH-531)
+
+* Fix a genconfig legacy feature option bug in Duktape 1.4.0 which caused
+  DUK_USE_PACKED_TVAL to default to false unless forced using
+  DUK_OPT_PACKED_TVAL (GH-550)
+
+* Fix debugger Eval handling issue where an uncaught error during Eval
+  command (with "pause on uncaught" option enabled) would cause a recursive
+  attempt to halt execution (GH-558, GH-562)
+
+* Fix debugger detach handling bug which could cause the debugger to be
+  re-entered recursively during detach handling; this could cause various
+  difficult to diagnose side effects (GH-599, GH-597, GH-591)
+
+* Fix debugger detach handling bug which could cause detach handling to be
+  initiated but not completed if the debug transport write error occurred
+  outside of the debugger message loop (for example when writing a Status
+  notify in running state) (GH-599, GH-597, GH-591)
+
+* Fix debugger transport write error bug which could cause Duktape to call
+  the debug transport write callback after it had already returned an error
+  (GH-599)
+
+* Fix memory unsafe behavior when an external plain buffer was allocated
+  with heap pointer compression enabled (DUK_USE_HEAPPTR16) (GH-618)
+
+1.4.2 (2016-08-29)
+------------------
+
+* Fix potential memory unsafe behavior when duk_push_(l)string() data pointer
+  is from a dynamic/external buffer (or any other relocatable data source)
+  and a finalizer side effect resizes/reconfigures the buffer, invalidating
+  the pointer before string table code has time to copy the data (GH-884)
+
+1.5.0 (2016-05-03)
+------------------
+
+* Add support for placing Duktape and user strings and objects into ROM
+  (read-only data section) which reduces the startup RAM usage of a low
+  memory build to ~3kB (from ~27kB) (GH-559)
+
+* Add debugger heap object inspection commands GetHeapObjInfo, GetObjPropDesc,
+  and GetObjPropDescRange, which allow a debug client to inspect heap objects
+  in detail, walk prototype chains, etc (GH-358, GH-617)
+
+* Garbage collection is now automatically disabled when execution is paused
+  in the debugger, which facilitates safe heap walking (GH-617)
+
+* Add a config option to drop the 16-bit character length field from
+  duk_hstring to reduce duk_hstring header overhead from 12 to 8 bytes,
+  which reduces low memory startup size using default RAM-based built-ins
+  from 27kB to 24kB (GH-642)
+
+* Allow ES6 unescaped curly braces ('{' and '}') in regular expressions
+  (non-standard before ES6 Annex B) when no valid quantifier can be parsed;
+  this improves compatibility with existing Javascript code which often assumes
+  support for literal curly braces (GH-142, GH-513, GH-547, GH-565)
+
+* Change Function object .toString() output to be Emscripten compatible:
+  anonymous functions won't get an automatic "anon" name, and the function
+  type is indicated using a fake directive rather than a comment; for example,
+  'function () {"ecmascript"}' (GH-554)
+
+* Make .stack format a bit more user friendly; if you are parsing the stack
+  trace format this may need changes in your parser (GH-588, GH-592)
+
+* Change automatic filename of compiled functions and eval code from
+  __FILE__ to "eval" (eval code) or "input" (other compiled code) when no
+  explicit filename is known; this makes file/line information thrown from
+  such code more useful in practice (GH-516, GH-644)
+
+* Add support for non-standard module.filename and module.name used for the
+  internal module wrapper function's .fileName and .name properties
+  respectively (if unset, defaults are resolved module ID and last component
+  of the resolved module ID, respectively); these properties affect e.g.
+  stack traces and can now be controlled by modSearch() (GH-639)
+
+* Add a .name property for the require() functions created for included
+  modules, so that they have a readable name in stack traces like the top
+  level require() function (GH-639)
+
+* Add Windows version of the debugger example TCP transport (GH-579)
+
+* Add support for application specific debugger commands (AppRequest) and
+  notifications (AppNotify) (GH-596, GH-563)
+
+* Add duk_debugger_pause() API which allows the target to quickly pause
+  Ecmascript execution and break into the debugger (GH-615)
+
+* Add sizeof void pointer to the BasicInfo debugger command (GH-611)
+
+* Extend debugger GetBytecode command to accept an optional callstack level
+  or direct heap object argument (GH-610)
+
+* A DukLuv-based JSON debug proxy is now included in the dist package;
+  it should allow much easier and more flexible packaging of a JSON debug
+  proxy into a debug client (GH-590)
+
+* Use plain integer dvalues when serializing duk_tval numbers in the debugger
+  protocol when it's safe to do so, i.e. when the plain integer converts back
+  to an identical IEEE double with no loss of precision (GH-604)
+
+* Change the error type for some current internal errors to RangeError when
+  the underlying cause is an implementation limit (like compiler temp limit)
+  rather than an unexpected internal situation (GH-661)
+
+* Minor changes to error message strings (GH-661)
+
+* Avoid reference loop for eval() code (previously caused by an automatic
+  .prototype property added for the internal function the eval source
+  compiles to); this allows eval functions to be collected immediately by
+  reference counting rather than by mark-and-sweep (GH-717)
+
+* Fix potentially memory unsafe behavior when a refcount-triggered finalizer
+  function rescues an object; the memory unsafe behavior doesn't happen
+  immediately which makes the cause of the unsafe behavior difficult to
+  diagnose (GH-531)
+
+* Fix memory unsafe behavior when an external plain buffer was allocated
+  with heap pointer compression enabled (DUK_USE_HEAPPTR16) (GH-618)
+
+* Fix pointer arithmetic portability issues with platforms/compilers with
+  exotic pointer models by avoiding arithmetic and binary operations on
+  (u)intptr_t values (GH-530, GH-539)
+
+* Fix a genconfig legacy feature option bug in Duktape 1.4.0 which caused
+  DUK_USE_PACKED_TVAL to default to false unless forced using
+  DUK_OPT_PACKED_TVAL (GH-550)
+
+* Fix debugger Eval handling issue where an uncaught error during Eval
+  command (with "pause on uncaught" option enabled) would cause a recursive
+  attempt to halt execution (GH-558, GH-562)
+
+* Fix debugger detach handling bug which could cause the debugger to be
+  re-entered recursively during detach handling; this could cause various
+  difficult to diagnose side effects (GH-599, GH-597, GH-591)
+
+* Fix debugger detach handling bug which could cause detach handling to be
+  initiated but not completed if the debug transport write error occurred
+  outside of the debugger message loop (for example when writing a Status
+  notify in running state) (GH-599, GH-597, GH-591)
+
+* Fix debugger transport write error bug which could cause Duktape to call
+  the debug transport write callback after it had already returned an error
+  (GH-599)
+
+* Fix debugger PutVar command bug where a failure to read the PutVar variable
+  value (e.g. due to a transport detach) could lead to memory unsafe behavior
+  (GH-610)
+
+* Fix JSON.stringify() fast path handling of boxed values to actually call
+  .toString() and/or .valueOf(); previously the fast path assumed that these
+  operations wouldn't be overridden by user code and accessed the internal
+  value directly (GH-447)
+
+* Fix conditional compilation for default alloc providers (enabled by
+  default using DUK_USE_PROVIDE_DEFAULT_ALLOC_FUNCTIONS) so that if the
+  option is disabled there's no reference to malloc(), realloc(), or
+  free() during compilation (GH-695)
+
+* Remove branch hint from around setjmp() for better portability (GH-605)
+
+* Portability improvement for Atari Mint: avoid fmin/fmax (GH-556)
+
+* Portability improvement for VS2012 C++ compilation: avoid double definition
+  of replacement double constants (GH-595)
+
+* Portability improvement for Windows MSVC: add inline macros (GH-580)
+
+* Portability improvement for FreeBSD: switch to using netinet/in.h header
+  instead of inet/arpa.h in debugger socket transport example (GH-676)
+
+* Portability improvement: python tooling (genconfig.py, make_dist.py) etc
+  use sys.executable for launching Python scripts so that e.g. "python2
+  util/make_dist.py" works on platforms where "python" points to Python 3;
+  repo Makefile updated to detect python2 vs. python (GH-646)
+
+* Rework setjmp/longjmp configuration model: (1) removed DUK_OPT_SETJMP,
+  DUK_OPT_SIGSETJMP, and DUK_OPT_UNDERSCORE_SETJMP; (2) added DUK_JMPBUF_TYPE
+  to duk_config.h to allow the jmp_buf struct to be replaced; (3) Duktape
+  internals now rely only on DUK_SETJMP, DUK_LONGJMP, and DUK_JMPBUF_TYPE,
+  all configurable via duk_config.h (or config platform definitions) (GH-635)
+
+* Change OS string (visible in Duktape.env) from "ios" to "osx" for non-phone
+  targets (GH-570, GH-571)
+
+* Remove readline support from duk_cmdline.c ('duk' command line tool), add
+  support for Linenoise instead; -DDUK_CMDLINE_FANCY now assumes linenoise.h
+  is in the include path and that linenoise.c is compiled with the command
+  line tool (or linked from a library) (GH-678)
+
+* Add minimal tab completion support for duk_cmdline.c ('duk') using Linenoise
+  completions (GH-679)
+
+* Internal performance improvement: use raw value stack accessors internally
+  when it's safe to do so (GH-582)
+
+* Internal performance improvement: single step encoding for JSON values in
+  the JSON slow path (GH-447)
+
+* Internal performance improvement: faster (and smaller) handling of bytecode
+  executor 'regconst' fields (GH-670)
+
+* Internal footprint improvement: reduce error call site size (GH-661)
+
+1.5.1 (2016-08-30)
+------------------
+
+* Fix a harmless compilation warning related to a shadowed variable (GH-793,
+  GH-794)
+
+* Fix incorrect duk_hbufferobject size in Duktape.info() (GH-804)
+
+* Fix compilation error triggered when using pointer compression and the
+  default string table implementation (probe-based rather than chained)
+  (GH-850)
+
+* Fix potential memory unsafe behavior when duk_push_(l)string() data pointer
+  is from a dynamic/external buffer (or any other relocatable data source)
+  and a finalizer side effect resizes/reconfigures the buffer, invalidating
+  the pointer before string table code has time to copy the data (GH-884)
+
+* Fix lightfunc constructor call handling: lightfuncs were incorrectly
+  rejected as constructors, now allowed as both direct constructors and
+  via a bound function chain (GH-895)
+
+* Fix direct references to __FILE__ and __LINE__ in the public header to use
+  DUK_FILE_MACRO and DUK_LINE_MACRO, which matters if the standard file/line
+  macros have been replaced in duk_config.h (GH-897)
+
+* Fix AmigaOS3 portability issue by enabling math function replacements
+  automatically for AmigaOS on M68K, regardless of OS version or compiler
+  (GH-932)
+
+* Fix clang compile warning for unused duk_err_unsupported_defmsg() (GH-764)
+
+* Reduce harmless "unused function" warnings for GCC and Clang by using
+  __attribute__ ((unused)) for internal function declarations (GH-916,
+  GH-942)
+
+Planned
+=======
+
 2.0.0 (XXXX-XX-XX)
 ------------------
 
-* Rework Duktape module loading model to be more flexible
+* Incompatible change: remove feature option (DUK_OPT_xxx) support entirely,
+  use tools/configure.py (or tools/genconfig.py) or edit duk_config.h manually
+  to use custom config options (GH-949)
 
-* Ecmascript 6 features will be implemented in v2.x.x at the earliest
-  (some individual features may be cherry picked into v1.x.x)
+* Incompatible change: remove Duktape.Buffer custom built-in, ArrayBuffer
+  now serves its place; the following new bindings provide functionality
+  roughly equivalent to Duktape.Buffer: ArrayBuffer.allocPlain() and
+  ArrayBuffer.plainOf(), however, the ability of doing a 1:1 buffer-to-string
+  coercion (using buffer data directly as the internal string representation)
+  has been removed (GH-875, GH-1005)
+
+* Incompatible change: rework buffer types and their Ecmascript and C API
+  behavior: plain buffers now behave like ArrayBuffers and inherit from
+  ArrayBuffer.prototype; there are a lot of associated small changes in
+  how built-ins behave for plain buffer arguments (GH-864)
+
+* Incompatible change: plain buffers now test false in duk_is_primitive()
+  which is more consistent with how they behave in Ecmascript coercions
+  (GH-864)
+
+* Incompatible change: ArrayBuffer and plain buffer numeric indices are
+  present but not enumerable, so that they won't be enumerated by for-in,
+  Object.keys(), or JSON (but are enumerated by Object.getOwnPropertyNames()
+  and duk_enum() when requesting non-enumerable keys) (GH-867)
+
+* Incompatible change: typed array .subarray() and Node.js buffer .slice()
+  result internal prototype is now the default prototype of the result
+  type (e.g. initial value of Uint8Array.prototype) rather than being
+  copied from the argument (GH-864)
+
+* Incompatible change: minor changes to buffer object behavior when buffer
+  types are mixed (e.g. Node.js Buffer as an argument to typed array calls)
+  (GH-864)
+
+* Incompatible change: when DUK_USE_BUFFEROBJECT_SUPPORT is disabled, don't
+  support coercing plain buffers to ArrayBuffers, or any other buffer object
+  operations (including all ArrayBuffer, typed array, and Node.js Buffer
+  methods); this reduces code footprint by around 1.2 kB (GH-889)
+
+* Incompatible change: Node.js Buffer binding aligned with Node.js v6.7.0
+  (from v0.12.1): Buffer.concat() special case for 1-element array removed
+  (GH-1004); Buffer now inherits from Uint8Array (GH-1008);
+  Buffer.prototype.toString() does UTF-8 decoding (previously buffer data
+  was copied into internal string representation as is) (GH-1020)
+
+* Incompatible change: plain pointer values now test true in instanceof
+  (plainPointer instanceof Duktape.Pointer === true) (GH-864)
+
+* Incompatible change: lightfunc values now test false in duk_is_primitive()
+  which is more consistent with how they behave in Ecmascript coercions
+  (GH-864)
+
+* Incompatible change: lightfunc value as a "this" binding is ToObject()
+  coerced to a full Function object if the call target is non-strict (this
+  matches e.g. string and plain buffer behavior) (GH-864)
+
+* Incompatible change: add a userdata argument to duk_safe_call() to make it
+  easier to pass C pointers to safe functions (GH-277, GH-727)
+
+* Incompatible change: remove built-in print() and alert() bindings which,
+  being dependent on stdout/stderr, are often a portability issue (GH-745)
+
+* Incompatible change: remove the built-in logging framework (Duktape.Logger,
+  duk_log(), duk_log_va()); now provided as an extra (GH-746, GH-790)
+
+* Incompatible change: remove the built-in module loading framework (global
+  require() call, Duktape.modSearch() etc); now provided as an extra (GH-821)
+
+* Incompatible change: rename duk_debugger_attach_custom() API call to
+  duk_debugger_attach() to eliminate an unnecessary API call variant
+  (GH-735, GH-742)
+
+* Incompatible change: remove duk_dump_context_{stdout,stderr}() to avoid a
+  dependency on stdout/stderr which is a porting issue (GH-736, GH-743)
+
+* Incompatible change: remove file related Duktape C API calls to avoid a
+  dependency on platform file I/O which is a porting issue; removed calls
+  (which were moved into extras): duk_push_string_file(), duk_compile_file(),
+  duk_pcompile_file(), duk_eval_file(), duk_eval_file_noresult(),
+  duk_peval_file(), duk_peval_file_noresult() (GH-788)
+
+* Incompatible change: debug protocol version bumped from 1 to 2 to indicate
+  version incompatible protocol changes in the 2.0.0 release (GH-756)
+
+* Incompatible change: require a DUK_USE_DEBUG_WRITE() macro for handling
+  debug writes when DUK_USE_DEBUG is enabled; this avoids a platform I/O
+  dependency and allows debug log filtering and retargeting (GH-782)
+
+* Incompatible change: use DUK_USE_DEBUG_LEVEL for debug print level control
+  rather than the previous DUK_USE_DPRINT, DUK_USE_DDPRINT, and
+  DUK_USE_DDDPRINT defines (GH-783)
+
+* Incompatible change: remove the distinction between panic and fatal errors,
+  and simplify the fatal error handler function signature to
+  ``void my_fatal(void *udata, const char *msg);``  (GH-781)
+
+* Incompatible change: remove error code argument from duk_fatal() API
+  call to match revised fatal error handler function signature (GH-781)
+
+* Incompatible change: default fatal error handler (similar to panic handler
+  in Duktape 1.x) segfaults and infinite loops without calling e.g. abort()
+  (which may not be available); this behavior can be overridden by defining
+  DUK_USE_FATAL_HANDLER() in duk_config.h (GH-781)
+
+* Incompatible change: change some debugger artificial property names to match
+  internal renames: compiledfunction -> compfunc, nativefunction -> natfunc,
+  bufferobject -> bufobj (GH-798)
+
+* Incompatible change: remove Duktape specific error codes DUK_ERR_ALLOC_ERROR,
+  DUK_ERR_API_ERROR, DUK_ERR_ASSERTION_ERROR, DUK_ERR_INTERNAL_ERROR,
+  DUK_ERR_UNCAUGHT_ERROR, DUK_ERR_UNIMPLEMENTED_ERROR,
+  DUK_ERR_UNSUPPORTED_ERROR; use standard error types instead (GH-827)
+
+* Incompatible change: map API related errors (which previously used
+  DUK_ERR_API_ERROR and a plain Error for Ecmascript representation) into
+  TypeErrors and RangeErrors to match common Ecmascript conventions (GH-827)
+
+* Incompatible change: add a "ctx" argument to the debugger detached_cb to
+  allow easier reattachment in detached callback (GH-758, GH-853)
+
+* Incompatible change: debugger inspection of array objects no longer sees a
+  concrete .length property for arrays because of internal duk_harray type
+  related changes; instead, an artificial property "length" is available via
+  GetHeapObjInfo (GH-703, GH-856)
+
+* Incompatible change: remove Duktape internal and user "InitJS" support
+  (DUK_USE_BUILTIN_INITJS and DUK_USE_USER_INITJS) which were very rarely
+  used and required minify tools to make a dist package (GH-899)
+
+* Incompatible change: bytecode opcode format reworks drop maximum function
+  and constructor call argument count from 511 to 255, and maximum Ecmascript
+  function constant count from 262144 to 65536 (GH-903)
+
+* Incompatible change: genconfig.py has been relocated to tools/genconfig.py
+  in the end user distributable (GH-929)
+
+* Incompatible change: util/dist.py no longer supports ROM built-ins, use
+  tools/configure.py instead (GH-929)
+
+* Incompatible change: remove duk_to_defaultvalue() which invoked the
+  [[DefaultValue]] specification algorithm removed in ES6 (it was folded
+  to ToPrimitive()), use duk_to_primitive() instead (GH-984)
+
+* Add support for dropping built-in bindings entirely when they are disabled
+  in configuration, e.g. the Proxy and buffer object bindings will be absent
+  instead of being replaced by functions throwing an error; this is more
+  in line with how application code detects active features and reduces
+  footprint (GH-988)
+
+* Change return from of duk_throw(), duk_error(), and duk_fatal() from void
+  to duk_ret_t which allows them to be called using the idiom
+  "return duk_error(ctx, DUK_ERR_TYPE_ERROR, "invalid argument");"
+  (GH-1038, GH-1041)
+
+* Add convenience API calls to throw specific error types; for example,
+  duk_type_error(), duk_type_error_va(), duk_range_error(), etc (GH-1040)
+
+* Add convenience API calls duk_get_prop_lstring(), duk_put_prop_lstring(),
+  duk_del_prop_lstring(), duk_has_prop_lstring(), duk_get_global_lstring(),
+  duk_put_global_lstring() (GH-946, GH-953)
+
+* Add duk_get_prop_desc() API call which pushes a property descriptor object
+  for a target object and key, similar to Object.getOwnPropertyDescriptor()
+  (GH-1087)
+
+* Add duk_suspend() and duk_resume() which allow a native thread running a
+  Duktape/C function to be suspended temporarily (e.g. when a native system
+  call blocks) so that other native threads may execute while the thread is
+  blocked (GH-893, GH-909)
+
+* Include raw input sources and a prepare-and-config tool in the distributable,
+  which allow user code to regenerate a config file and source code files for
+  specified options; this is more comprehensive than just running genconfig.py
+  and makes it possible to e.g. use ROM built-ins directly from the end user
+  distributable (GH-927, GH-928)
+
+* Add support for converting ROM function property values into lightfuncs in
+  genbuiltins.py to reduce code footprint for ROM-based built-ins and custom
+  bindings; footprint reduction is around 14-15kB on 32-bit targets (GH-872)
+
+* Allow ES6 Annex B unescaped right bracket (']') in regular expressions
+  (non-standard before ES6 Annex B), left bracket ('[') not yet supported
+  because it needs backtracking (GH-871)
+
+* Allow ES6 Annex B identity escapes, i.e. allow identity escapes also for
+  identifier part characters; the support is not yet complete as Duktape
+  won't backtrack on e.g. an invalid hex escape and treat it literally
+  (GH-926)
+
+* Add support for ES6 computed property names in object literals, e.g.
+  "{ [1+2]: 'three' }" (GH-985)
+
+* Add support for ES7 exponentiation and exponentiation assignment operators,
+  e.g. "2 ** 10" evaluates to 1024, avoiding the cost of an Ecmascript call to
+  Math.pow() while also being more readable (GH-987, GH-997)
+
+* Add a Reflect built-in, provides Reflect.construct() etc. from ES6; some
+  features like constructor retargeting require ES6+ semantics and are thus not
+  yet supported (GH-1025)
+
+* Add support for ES6 \u{H+} escape syntax for source code string literals
+  and identifiers, no RegExp support yet (requires RegExp /u Unicode mode)
+  (GH-1001)
+
+* Add support for ES6 octal (0o123) and binary (0b100001) in source code
+  literals and ToNumber() coercion (e.g. "+'0o123'") (GH-1057, GH-1084)
+
+* Add support for ES6 String.prototype.codePointAt(), String.fromCodePoint(),
+  and String.prototype.repeat() (GH-1043, GH-1049, GH-1050)
+
+* Add support for ES6 Math.hypot(), Math.cbrt(), Math.log2(), Math.log10(),
+  Math.trunc() (GH-1069, GH-1093)
+
+* Add support for ES6 Object.assign() (GH-1064)
+
+* Add support for ES6 Object.is() and duk_samevalue() API call (GH-1068)
+
+* Add TextEncoder and TextDecoder built-ins (the Encoding API) which allow
+  Ecmascript code to read and write text stored in an ArrayBuffer or a plain
+  buffer (GH-975)
+
+* Respect ES6 enumeration order (array index keys, other keys in insertion
+  order) for Object.getOwnPropertyNames(), also use the same order in
+  for-in, Object.keys(), and duk_enum() even though that's not strictly
+  required by ES6 or ES7 (GH-1054)
+
+* Remove no longer needed platform wrappers in duk_config.h: DUK_ABORT(),
+  DUK_EXIT(), DUK_PRINTF(), DUK_FPRINTF(), DUK_FOPEN(), DUK_FCLOSE(),
+  DUK_FREAD(), DUK_FWRITE(), DUK_FSEEK(), DUK_FTELL(), DUK_FFLUSH(),
+  DUK_FPUTC(), DUK_STDOUT, DUK_STDERR, DUK_STDIN, duk_file (GH-787, GH-761)
+
+* Add time functions to the C API (duk_get_now(), duk_time_to_components(),
+  duk_components_to_time()) to allow C code to conveniently work with the
+  same time provider as seen by Ecmascript code (GH-771)
+
+* Add a human readable summary of 'new MyConstructor()' constructor call
+  target when the target is non-constructable (GH-757)
+
+* Add a safe summary for "uncaught error" fatal error (GH-832)
+
+* Remove duk_{get,put,has,del}_var() calls from API header; they were not
+  fully implemented and not part of the documented public API (GH-762)
+
+* Minor changes to error messages for errors thrown by Duktape internals
+  (GH-827, GH-839, GH-840, GH-1016)
+
+* Make coroutine support optional (DUK_USE_COROUTINE_SUPPORT); disabling
+  coroutines reduces code footprint by about 2kB (GH-829)
+
+* Make finalizer support optional (DUK_USE_FINALIZER_SUPPORT); disabling
+  coroutines reduces code footprint by about 0.8kB (GH-936)
+
+* Add an internal type for representing Array instances (duk_harray) to
+  simplify array operations and improve performance; this also changes the
+  key order of Object.getOwnPropertyNames() for sparse arrays (arrays whose
+  internal "array part" has been abandoned) (GH-703)
+
+* Rename debugger protocol artificial property "bound" to "boundfunction"
+  for consistency with an internal flag rename (GH-703)
+
+* Add an extra module (extras/duk-v1-compat) providing many Duktape 1.x API
+  calls removed in Duktape 2.x (multiple Github issues)
+
+* Add an extra module (extras/print-alert) providing Duktape 1.x compatible
+  print() and alert() bindings (GH-745)
+
+* Add an extra module (extras/logging) providing Duktape 1.x compatible
+  logging framework (Duktape.Logger, duk_log(), duk_log_va()) (GH-746)
+
+* Add an extra module (extras/console) providing a minimal 'console' binding
+  (GH-767)
+
+* Add an extra module (extras/module-duktape) providing a Duktape 1.x
+  compatible module loading framework (Duktape.modSearch etc) (GH-821)
+
+* Add an extra module (extras/module-node) providing a Node.js-like module
+  loading framework supporting require.cache, module.loaded, etc. (GH-796)
+
+* Add an extra module (extras/minimal-printf) providing minimal,
+  Duktape-optimized sprintf(), snprintf(), vsnprintf(), and sscanf()
+  implementations; the extra compiles to less than 1kB of code which is
+  useful on bare metal platforms where an external printf() or scanf()
+  dependency may have a large footprint impact (often 10-30 kB) (GH-801)
+
+* Add an extra module (extras/alloc-pool) providing an improved pool
+  allocator which supports runtime resizing of pool counts to specified
+  memory target and realloc shrinking (GH-847)
+
+* As a side effect of fixing JSON serialization of buffer objects, JSON
+  fast path is aborted when encountering buffer objects; the fast path
+  doesn't currently handle buffer object virtual properties correctly
+  so to remain compliant fall back to slow path for now (GH-867)
+
+* Add a minimal alloc/realloc/free self test to the (optional) internal
+  self test (GH-877)
+
+* Add an FP rounding mode self test (Duktape assumes rounding mode is
+  IEEE 754 round-to-nearest, C99 FE_TONEAREST) (GH-606)
+
+* Update UnicodeData.txt and SpecialCasing.txt used for building internal
+  Unicode control data to Unicode version 9.0.0 (GH-931)
+
+* Simplify call related bytecode opcodes for better performance; as a
+  result maximum argument count to normal and constructor calls dropped
+  from 511 to 255, and calling a user function (i.e. not the built-in
+  native eval()) via the identifier 'eval' doesn't get tailcall
+  optimization (GH-896)
+
+* Make Array property read/write fast path optional to reduce footprint
+  for footprint optimized builds (ensure DUK_USE_ARRAY_PROP_FASTPATH is
+  disabled for low memory builds) (GH-934)
+
+* Add DUK_USE_GET_RANDOM_DOUBLE() config option to allow an application
+  to override the built-in random number generator (which is very simple
+  and low footprint optimized) with something faster or better (GH-824)
+
+* Change default built-in PRNG algorithm to xoroshiro128+ with SplitMix64
+  seed mixing; previous algorithm (Shamir's three-op algorithm) is still
+  used for low memory targets and targets without 64-bit types (GH-970)
+
+* Change parsing of legacy octal literals so that 077 is parsed as octal
+  (= 63) but 078 is parsed as decimal (78) rather than causing a SyntaxError;
+  this aligns better with behavior of other engines (GH-1057)
+
+* Change parsing of octal escapes in string literals to better align with
+  ES6 and other engines; "\078" is now accepted and is the same as
+  "\u00078", "\8" and "\9" are accepted as literal "8" and "9"  (GH-1057)
+
+* Add a fastint check for duk_put_number_list() values (GH-1086)
+
+* Fix a few bugs in object property handling (delete property and
+  Object.defineProperty()) where an object property table resize triggered
+  by a finalizer of a previous value could cause memory unsafe behavior
+  (GH-1096)
+
+* Fix Object.prototype.__proto__ handling to use ToObject() coercion rather
+  than requiring an object; this matches ES6 requirements and allows e.g.
+  the expression (123).__proto__ to work (GH-1080)
+
+* Fix String.fromCharCode() behavior for non-BMP characters when standard
+  behavior is enabled (DUK_USE_NONSTD_STRING_FROMCHARCODE_32BIT disabled):
+  use ToUint16() + CESU-8 rather than ToUint32() + CESU-8 which produces
+  two codepoints for non-BMP characters (GH-1046)
+
+* Fix incorrect evaluation order of X <op>= Y expressions when the RHS
+  (Y) mutates the value of X (GH-992)
+
+* Fix incorrect buffer zeroing assumption in regexp executor, triggered
+  when DUK_USE_ZERO_BUFFER_DATA is not set (default is set) (GH-978)
+
+* Fix incorrect value stack handling in duk_put_prop_(l)string() and
+  duk_put_prop_index() when the target object and the property value
+  are in the same value stack slot (which is unusual but conceptually
+  clear) (GH-959)
+
+* Fix buffer object (duk_hbufobj) JSON serialization (bug present in 1.5.0):
+  buffer objects were omitted from serialization when they should be
+  serialized as normal objects instead (GH-867)
+
+* Fix compilation error triggered when using pointer compression and the
+  default string table implementation (probe-based rather than chained)
+  (GH-850)
+
+* Fix a harmless compilation warning related to a shadowed variable (GH-793,
+  GH-794)
+
+* Fix -Wshadow warnings on some GCC versions for variable/argument name
+  'index' by avoiding such identifiers in API and internals (GH-810)
+
+* Fix -Wshift-sign-overflow warnings on some Clang versions for signed left
+  shifts whose result was used as unsigned (GH-812, GH-813)
+
+* Fix JSON.stringify (and JX/JC encode) fast path to allow arrays whose
+  .length is larger than the internal array part size (created e.g. when
+  calling new Array(10)) without falling back to the slow path (GH-703)
+
+* Fix potential memory unsafe behavior when duk_push_(l)string() data pointer
+  is from a dynamic/external buffer (or any other relocatable data source)
+  and a finalizer side effect resizes/reconfigures the buffer, invalidating
+  the pointer before string table code has time to copy the data (GH-884)
+
+* Fix lightfunc constructor call handling: lightfuncs were incorrectly
+  rejected as constructors, now allowed as both direct constructors and
+  via a bound function chain (GH-895)
+
+* Fix direct references to __FILE__ and __LINE__ in the public header to use
+  DUK_FILE_MACRO and DUK_LINE_MACRO, which matters if the standard file/line
+  macros have been replaced in duk_config.h (GH-897)
+
+* Fix ARM64 platform detection for some Android targets (GH-1062)
+
+* Fix AmigaOS3 portability issue by enabling math function replacements
+  automatically for AmigaOS on M68K, regardless of OS version or compiler
+  (GH-932)
+
+* Fix two-argument Math function (like Math.atan2()) argument coercion
+  order; the order was not guaranteed but specification requires left-to-right
+  ordering (GH-943)
+
+* Fix genconfig.py forced option boolean comparison; for forced numeric option
+  value 0 genconfig would emit "#undef XXX" (instead of "#define XXX 0") and
+  for forced numeric option value 1 it would emit "#define XXX" (instead of
+  "#define XXX 1") (GH-954)
+
+* Reduce harmless "unused function" warnings for GCC and Clang by using
+  __attribute__ ((unused)) for internal function declarations (GH-916,
+  GH-942)
+
+* Fix incorrect duk_hbufferobject size in Duktape.info() (GH-804)
+
+* Fix a few incorrect asserts in refcount code; the asserts didn't check for
+  NULL and cause memory unsafe behavior, but the code itself is correct
+  (GH-1090)
+
+* Miscellaneous portability improvements: remove dependency on fmin() and
+  fmax() (GH-1072)
+
+* Internal performance improvement: rework bytecode format to use an 8-bit
+  opcode field (and 8-bit A, B, and C fields) to speed up opcode dispatch
+  by around 20-25% and avoid a two-level dispatch for EXTRA opcodes; the
+  performance optimized build is ~10kB larger while footprint optimized
+  build is slightly smaller (GH-903)
+
+* Internal performance improvement: add optional fast path for dense arrays in
+  Array.prototype operations like push() and pop() (GH-584)
+
+* Miscellaneous performance improvements: avoid one extra shift when computing
+  reg/const pointers in the bytecode executor (GH-674); avoid value stack for
+  Array .length coercion (GH-862); value stack operation optimization
+  (GH-891); call related bytecode simplification (GH-896); minor bytecode
+  opcode handler optimizations (GH-903); refcount optimizations (GH-443,
+  GH-973, GH-1042); minor RegExp compile/execute optimizations (GH-974,
+  GH-1033); minor IEEE double handling optimizations (GH-1051); precomputed
+  duk_hstring array index (GH-1056); duk_get_{type,type_mask}() optimization
+  (GH-1077)
+
+* Miscellaneous footprint improvements: RegExp compiler/executor (GH-977);
+  internal duk_dup() variants (GH-990); allow stripping of (almost) all
+  built-ins for low memory builds (GH-989); remove internal accessor setup
+  helper and use duk_def_prop() instead (GH-1010); minor IEEE double handling
+  optimizations (GH-1051); precomputed duk_hstring array index (GH-1056);
+  internal value stack access improvements (GH-1058)
+
+* Internal change: rework shared internal string handling so that shared
+  strings are plain string constants used in macro values, rather than
+  being declared as actual symbols; this reduces compilation warnings with
+  non-default config options (GH-760)
+
+* Internal change: shorten internal struct names to improve source code
+  readability: duk_hcompiledfunction -> duk_hcompfunc,
+  duk_hnativefunction -> duk_hnatfunc, duk_hbufferobject -> duk_hbufobj
+  (GH-798)
+
+* Internal change: avoid explicit casts for 'switch' statement arguments,
+  other internal cast fixes (GH-825)
+
+* Internal change: rework tagged value (duk_tval) fastint/integer handling
+  macros to avoid multiple evaluation of argument(s) and for easier mixing
+  of fastint and non-fastint aware code (GH-702)

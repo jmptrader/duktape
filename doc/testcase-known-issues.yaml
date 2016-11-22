@@ -7,9 +7,6 @@
   test: "test-bi-global-parseint.js"
   knownissue: "rounding differences for parsing integers larger than 2^53"
 -
-  test: "test-bi-global-parseint-oct.js"
-  knownissue: "non-standard octal behavior does not match V8/Rhino"
--
   test: "test-bi-json-dec-types.js"
   knownissue: "'\\x' should be allowed by eval() but not by JSON.parse(), Duktape rejects '\\x' in both"
 -
@@ -73,9 +70,6 @@
   test: "test-regexp-invalid-charclass.js"
   knownissue: "some invalid character classes are accepted (e.g. '[\\d-z]' and '[z-x]')"
 -
-  test: "test-regexp-nonstandard-patternchar.js"
-  knownissue: "other engines allow an unescaped brace to appear literally (e.g. /{/), Duktape does not (which seems correct but is against real world behavior)"
--
   test: "test-stmt-for-in-lhs.js"
   knownissue: "for-in allows some invalid left-hand-side expressions which cause a runtime ReferenceError instead of a compile-time SyntaxError (e.g. 'for (a+b in [0,1]) {...}')"
 -
@@ -87,6 +81,12 @@
 -
   test: "test-bug-dataview-buffer-prop.js"
   knownissue: "DataView .buffer property misleading when DataView argument is not an ArrayBuffer (custom behavior)"
+-
+  test: "test-bi-json-enc-proxy.js"
+  knownissue: "JSON enumeration behavior for Proxy targets is incomplete and uses 'enumerate' trap instead of 'ownKeys' trap"
+-
+  test: "test-bi-proxy-object-tostring.js"
+  knownissue: "Object class handling for Proxy objects is incomplete"
 
 # Ecmascript testcases that need special options or environment to work
 
@@ -101,28 +101,31 @@
   specialoptions: "test case has been written for Finnish locale"
 -
   test: "test-bi-duktape-json-lightfunc.js"
-  specialoptions: "DUK_OPT_LIGHTFUNC_BUILTINS"
+  specialoptions: "DUK_USE_LIGHTFUNC_BUILTINS"
 -
   test: "test-bi-function-nonstd-caller-prop.js"
-  specialoptions: "DUK_OPT_NONSTD_FUNC_CALLER_PROPERTY"
+  specialoptions: "DUK_USE_NONSTD_FUNC_CALLER_PROPERTY"
 -
   test: "test-dev-16bit-overflows.js"
   specialoptions: "requires 16-bit field options"
 -
   test: "test-dev-lightfunc-accessor.js"
-  specialoptions: "DUK_OPT_LIGHTFUNC_BUILTINS"
+  specialoptions: "DUK_USE_LIGHTFUNC_BUILTINS"
 -
   test: "test-dev-lightfunc-finalizer.js"
-  specialoptions: "DUK_OPT_LIGHTFUNC_BUILTINS"
+  specialoptions: "DUK_USE_LIGHTFUNC_BUILTINS"
 -
   test: "test-dev-lightfunc.js"
-  specialoptions: "DUK_OPT_LIGHTFUNC_BUILTINS"
+  specialoptions: "DUK_USE_LIGHTFUNC_BUILTINS"
 -
   test: "test-dev-logicalnot-refcount.js"
   specialoptions: "requires refcounting"
 -
   test: "test-dev-nonstd-setget-key-argument.js"
-  specialoptions: "should work with default options, but will break with DUK_OPT_NO_NONSTD_ACCESSOR_KEY_ARGUMENT"
+  specialoptions: "should work with default options, but will break with DUK_USE_NONSTD_GETTER_KEY_ARGUMENT or DUK_USE_NONSTD_SETTER_KEY_ARGUMENT"
+-
+  test: "test-bi-typedarray-nan-handling.js"
+  specialoptions: "NaN sign is platform dependent"
 
 # API testcase (tests/api/) known issues
 

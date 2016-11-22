@@ -6,7 +6,8 @@
  * there are a few numconv rounding issues in the expect string.
  */
 
-/*@include util-typedarray.js@*/
+/*@include util-buffer.js@*/
+/*@include util-string.js@*/
 
 /*---
 {
@@ -2385,7 +2386,7 @@ function coercionTest() {
         print(Object.prototype.toString.call(b));
         vals.forEach(function (v, j) {
             b[0] = v;
-            print(j, v, '->', num2str(b[0]));
+            print(j, v, '->', numberToString(b[0]));
         });
     });
 }

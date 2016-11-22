@@ -1,3 +1,5 @@
+if (typeof print !== 'function') { print = console.log; }
+
 function test() {
     var x, y, z;
     var i, n;
@@ -6,6 +8,38 @@ function test() {
     y = 0xcafed00d;
 
     for (i = 0, n = 1e7; i < n; i++) {
+        z = x & y;
+        z = x | y;
+        z = x ^ y;
+        z = x << y;
+        z = x >> y;
+        z = x >>> y;
+        z = ~x;
+
+        z = x & y;
+        z = x | y;
+        z = x ^ y;
+        z = x << y;
+        z = x >> y;
+        z = x >>> y;
+        z = ~x;
+
+        z = x & y;
+        z = x | y;
+        z = x ^ y;
+        z = x << y;
+        z = x >> y;
+        z = x >>> y;
+        z = ~x;
+
+        z = x & y;
+        z = x | y;
+        z = x ^ y;
+        z = x << y;
+        z = x >> y;
+        z = x >>> y;
+        z = ~x;
+
         z = x & y;
         z = x | y;
         z = x ^ y;

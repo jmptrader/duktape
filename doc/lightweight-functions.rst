@@ -56,10 +56,10 @@ lightfunction values with ``duk_push_c_lightfunc()``.  Lightfunc limits:
 
 * Magic must be between -128 to 127 (-0x80 to 0x7f).
 
-DUK_OPT_LIGHTFUNC_BUILTINS
+DUK_USE_LIGHTFUNC_BUILTINS
 --------------------------
 
-The feature option ``DUK_OPT_LIGHTFUNC_BUILTINS`` converts most built-in
+The config option ``DUK_USE_LIGHTFUNC_BUILTINS`` converts most built-in
 functions forcibly into lightweight functions, reducing memory usage on
 low memory platforms by around 14 kB.
 
@@ -175,7 +175,7 @@ This list is not exhaustive:
   - For example, if a call site uses ``duk_require_hobject()`` it needs to
     be changed to allow an object or a lightfunc.  There's a specific helper
     to implement minimal lightfunc support to such call sites by coercing
-    lightfuncs to full Function objects: ``duk_require_hobject_or_lfunc_coerce()``.
+    lightfuncs to full Function objects: ``duk_require_hobject_promote_lfunc()``.
 
 * Add support in call handling for calling a lightfunc:
 
@@ -240,7 +240,7 @@ More call sites with direct support of lightfuncs
 -------------------------------------------------
 
 Add support for direct lightfunc support in places where object coercion
-(e.g. ``duk_require_hobject_or_lfunc_coerce()``) is used.  Such coercion
+(e.g. ``duk_require_hobject_promote_lfunc()``) is used.  Such coercion
 has a memory churn impact so it's preferable to avoid it when it matters.
 The best places to improve on are those seen in practical code.
 

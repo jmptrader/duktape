@@ -1,3 +1,5 @@
+if (typeof print !== 'function') { print = console.log; }
+
 function build() {
     var obj = {};
 
@@ -18,7 +20,7 @@ function test() {
     var ignore;
 
     obj = build();
-    for (i = 0; i < 1e5; i++) {
+    for (i = 0; i < 4e5; i++) {
         ignore = JSON.stringify(obj);
     }
 }

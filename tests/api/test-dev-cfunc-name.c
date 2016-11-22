@@ -8,17 +8,17 @@
 /*===
 *** test_without_name (duk_safe_call)
 my name is: ''
-URIError: uri error (rc -106)
-	anon  native strict preventsyield
-	forEach  native strict preventsyield
-	eval XXX preventsyield
+URIError: error (rc -7)
+    at [anon] () native strict preventsyield
+    at forEach () native strict preventsyield
+    at eval XXX preventsyield
 ==> rc=0, result='undefined'
 *** test_with_name (duk_safe_call)
 my name is: 'my_func'
-URIError: uri error (rc -106)
-	my_func  native strict preventsyield
-	forEach  native strict preventsyield
-	eval XXX preventsyield
+URIError: error (rc -7)
+    at my_func () native strict preventsyield
+    at forEach () native strict preventsyield
+    at eval XXX preventsyield
 ==> rc=0, result='undefined'
 ===*/
 
@@ -31,7 +31,9 @@ static duk_ret_t my_func(duk_context *ctx) {
 	return DUK_RET_URI_ERROR;
 }
 
-static duk_ret_t test_without_name(duk_context *ctx) {
+static duk_ret_t test_without_name(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_c_function(ctx, my_func, 0);
 	duk_put_global_string(ctx, "MyFunc");
 
@@ -45,7 +47,9 @@ static duk_ret_t test_without_name(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_with_name(duk_context *ctx) {
+static duk_ret_t test_with_name(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_get_global_string(ctx, "MyFunc");
 	duk_push_string(ctx, "my_func");
 	duk_put_prop_string(ctx, -2, "name");

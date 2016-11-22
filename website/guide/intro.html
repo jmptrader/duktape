@@ -1,16 +1,19 @@
 <h1 id="introduction">Introduction</h1>
 
-<p>Version: <span class="duktape-version">XX.XX.XX</span> (<span class="current-date">XXXX-XX-XX</span>)</p>
+<p>Version: <span class="duktape-version">XX.XX.XX</span>
+(<span class="current-date">XXXX-XX-XX</span>)</p>
 
 <h2>Document scope</h2>
 
 <p>This guide provides an introduction to using Duktape in your programs.
 Once you're familiar with the basics, there is a concise
-<a href="api.html">API reference</a> for looking up API details.</p>
+<a href="api.html">API reference</a> for looking up API details.  The
+<a href="http://wiki.duktape.org">Duktape Wiki</a> provides more detailed
+examples and best practices.</p>
 
-<p>This document doesn't cover Duktape internals (see the
+<p>This document doesn't cover Duktape internals, see the
 <a href="https://github.com/svaarala/duktape/tree/master/doc">Duktape repo</a>
-if you wish to tinker with them).</p>
+if you wish to tinker with them.</p>
 
 <h2>What is Duktape?</h2>
 
@@ -20,29 +23,33 @@ C/C++ program you can easily extend its functionality through scripting.
 You can also build the main control flow of your program in Ecmascript
 and use fast C code functions to do heavy lifting.</p>
 
+<p>Embeddability means that Duktape makes minimal assumptions about the
+underlying platform and its capabilities; instead, the application which
+embeds Duktape is in control of which native bindings are provided and
+in what manner.  For example, there are no default bindings for printing
+text to the console or to interact with the file system.  Duktape
+distributable package includes example providers which you can easily
+integrate if they suit your needs.</p>
+
 <p>The terms Ecmascript and Javascript are often considered more or less
 equivalent, although Javascript and its variants are technically just one
 environment where the Ecmascript language is used.  The line between the
 two is not very clear in practice: even non-browser Ecmascript environments
-often provide some browser-specific built-ins.  Duktape is no exception,
-and provides the commonly used <code>print()</code> and <code>alert()</code>
-built-ins.  Even so, we use the term Ecmascript throughout to refer to the
-language implemented by Duktape.</p>
+often provide some browser-specific built-ins.  Even so, we use the term
+Ecmascript throughout to refer to the language implemented by Duktape.</p>
 
 <h2>Conformance</h2>
 
-<p>Duktape conforms to the following Ecmascript specifications:</p>
+<p>Duktape conforms to ES5.0/ES5.1:</p>
 <ul>
-<li><a href="http://www.ecma-international.org/publications/files/ECMA-ST-ARCH/ECMA-262%205th%20edition%20December%202009.pdf">Edition 5 (E5)</a></li>
-<li><a href="http://www.ecma-international.org/publications/files/ECMA-ST/Ecma-262.pdf">Edition 5.1 (E5.1)</a>
-    (as <a href="http://www.ecma-international.org/ecma-262/5.1/">HTML</a>)</li>
+<li><a href="http://www.ecma-international.org/publications/files/ECMA-ST-ARCH/ECMA-262%205th%20edition%20December%202009.pdf">ECMAScript Language Specification 5th Edition</a></li>
+<li><a href="http://www.ecma-international.org/ecma-262/5.1/">ECMAScript&#x00ae; Language Specification 5.1 Edition</a></li>
 </ul>
 
-<p>Duktape borrows
-<a href="#es6features">a few features</a> from Ecmascript E6:</p>
+<p>Some features from Ecmascript 2015 (E6) and Ecmascript 2016 (E7) are implemented:</p>
 <ul>
-<li><a href="http://www.ecma-international.org/publications/files/ECMA-ST/Ecma-262.pdf">Edition 6 (E6)</a>
-    (as <a href="http://www.ecma-international.org/ecma-262/6.0/index.html">HTML</a>)</li>
+<li><a href="http://www.ecma-international.org/ecma-262/6.0/">ECMAScript&#x00ae; 2015 Language Specification</a></li>
+<li><a href="http://www.ecma-international.org/ecma-262/7.0/">ECMAScript&#x00ae; 2016 Language Specification</a></li>
 </ul>
 
 <p>TypedArray support is based on Khronos TypedArray specification with some
@@ -55,7 +62,7 @@ engines):</p>
 
 <p>Node.js Buffer support is based on:</p>
 <ul>
-<li> <a href="https://nodejs.org/docs/v0.12.1/api/buffer.html">Buffer Node.js v0.12.1</a></li>
+<li> <a href="https://nodejs.org/docs/v6.9.1/api/buffer.html">Buffer Node.js v6.9.1</a></li>
 </ul>
 
 <h2>Features</h2>
@@ -64,10 +71,13 @@ engines):</p>
 features (some are visible to applications, while others are internal):</p>
 <ul>
 <li>Khronos/ES6 <a href="https://www.khronos.org/registry/typedarray/specs/latest/">TypedArray</a>
-    and <a href="https://nodejs.org/docs/v0.12.1/api/buffer.html">Node.js Buffer</a> bindings</li>
-<li>Borrowed from ES6: <code>setPrototypeOf</code>/<code>__proto__</code>
-    and a subset of <code>Proxy</code> objects</li>
-<li>Borrowed from browsers: <code>print()</code> and <code>alert()</code></li>
+    and <a href="https://nodejs.org/docs/v6.9.1/api/buffer.html">Node.js Buffer</a> bindings,
+    plain buffer type (lightweight ArrayBuffer)</li>
+<li>From Ecmascript 2015 (E6): <code>setPrototypeOf</code>/<code>__proto__</code>,
+    a subset of <code>Proxy</code> objects, <code>Reflect</code>, computed property names,
+    and minimal <code>const</code> support</li>
+<li>From Ecmascript 2016 (E7): exponentiation operator (<code>**</code>, <code>**=</code>)</li>
+<li><a href="https://encoding.spec.whatwg.org/#api">Encoding API</a> bindings based on the WHATWG Encoding Living Standard</li>
 <li>Duktape specific built-ins: provided by the <code>Duktape</code> global object</li>
 <li>Extended types: custom "buffer" and "pointer" types, extended string type
     which supports arbitary binary strings and
@@ -75,17 +85,14 @@ features (some are visible to applications, while others are internal):</p>
     strings (standard Ecmascript only supports 16-bit codepoints)</li>
 <li>Combined reference counting and mark-and-sweep garbage collection,
     with finalizers and emergency garbage collection (you can also build
-    with just reference counting or mark-and-sweep)</li>
+    with just mark-and-sweep)</li>
 <li>Coroutine support</li>
 <li>Tail call support</li>
-<li>Built-in debugger</li>
-<li>Built-in CommonJS-based module loading framework</li>
+<li>Built-in debugger framework based on a debugger protocol</li>
 <li>Built-in regular expression engine with no platform dependencies</li>
 <li>Built-in Unicode support with no platform dependencies</li>
 <li>Built-in number parsing and formatting with no platform dependencies</li>
 <li>Additional custom JSON formats (JX and JC)</li>
-<li>Very lightweight built-in logging framework available for both C and
-    Ecmascript code</li>
 <li>Bytecode dump/load mechanism for caching compiled functions</li>
 </ul>
 
@@ -110,7 +117,8 @@ representation should be UTF-8 with automatic NUL terminators to match
 common C use.</p>
 
 <p><b>Small footprint</b>.  Code and data footprint should be as small as
-possible, even for small programs.  This is more important than performance,
+possible, even for small programs.  Duktape is portable even to "bare metal"
+targets with no standard libraries.  This is more important than performance,
 as there are already several very fast engines but fewer very compact,
 portable engines.</p>
 
@@ -147,16 +155,18 @@ wrappers are discussed in detail.</p>
 <p>Duktape specific Ecmascript features are discussed in multiple sections:
 <a href="#typealgorithms">Type algorithms</a> (for custom types),
 <a href="#duktapebuiltins">Duktape built-ins</a> (additional built-ins), 
-<a href="#es6features">Ecmascript E6 features</a> (features borrowed from ES6),
+<a href="#es6features">Ecmascript 2015 (E6) features</a> (features implemented from ES6),
+<a href="#es7features">Ecmascript 2016 (E7) features</a> (features implemented from ES7),
 <a href="#custombehavior">Custom behavior</a> (behavior differing from standard),
 <a href="#customjson">Custom JSON formats</a>,
 <a href="#customdirectives">Custom directives</a>,
 <a href="#bufferobjects">Buffer objects</a>,
 <a href="#errorobjects">Error objects</a> (properties and traceback support),
 <a href="#functionobjects">Function objects</a> (properties),
+<a href="#datetime">Date and time</a>,
+<a href="#random">Random numbers</a>,
 <a href="#debugger">Debugger</a>,
 <a href="#modules">Modules</a>,
-<a href="#logging">Logging</a>,
 <a href="#finalization">Finalization</a>,
 <a href="#coroutines">Coroutines</a>,
 <a href="#virtualproperties">Virtual properties</a>,
@@ -170,8 +180,8 @@ wrappers are discussed in detail.</p>
 for improving performance and avoiding performance pitfalls.
 <a href="#memoryusage">Memory usage</a> summarizes Duktape memory usage and
 gives pointers for minimizing it.
-<a href="#compiling">Compiling</a> describes how to compile Duktape in detail,
-covering in particular available feature defines.
+<a href="#compiling">Compiling</a> describes how to configure and compile Duktape
+as part of your application.
 <a href="#portability">Portability</a> covers platform and compiler specific
 issues and other portability issues.
 <a href="#compatibility">Compatibility</a> discusses Duktape's compatibility
@@ -183,4 +193,3 @@ and provides possible workarounds.</p>
 
 <p><a href="#comparisontolua">Comparison to Lua</a> discusses some differences
 between Lua and Duktape; it may be useful reading if you're already familiar with Lua.</p>
-

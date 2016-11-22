@@ -3,6 +3,8 @@
  *  Checks both Duktape.errCreate and Duktape.errThrow.
  */
 
+/*@include util-buffer.js@*/
+
 /*===
 errCreate
 - no errCreate
@@ -25,7 +27,7 @@ catch: string
 catch: object
 catch: object
 catch: function
-catch: buffer
+catch: object
 catch: pointer
 catch: object
 catch: object
@@ -40,10 +42,10 @@ error: DoubleError: error in error handling, foo: undefined, bar: undefined
 error: ReferenceError: identifier 'zork' undefined, foo: undefined, bar: undefined
 - non-callable errCreate
 error: DoubleError: error in error handling, foo: undefined, bar: undefined
-error: TypeError: not callable, foo: undefined, bar: undefined
+error: TypeError: 123 not callable, foo: undefined, bar: undefined
 - "undefined" (but set) errCreate
 error: DoubleError: error in error handling, foo: undefined, bar: undefined
-error: TypeError: not callable, foo: undefined, bar: undefined
+error: TypeError: undefined not callable, foo: undefined, bar: undefined
 - delete errCreate property
 error: ReferenceError: identifier 'aiee' undefined, foo: undefined, bar: undefined
 error: URIError: fake uri error, foo: undefined, bar: undefined
@@ -146,7 +148,7 @@ function errCreateTest() {
     Constructor4.prototype = Error.prototype;
 
     [ undefined, null, true, 123, 'foo', [ 'foo', 'bar' ], { foo:1, bar:2 },
-      function () {}, Duktape.Buffer('foo'), Duktape.Pointer('dummy'),
+      function () {}, createPlainBuffer('foo'), Duktape.Pointer('dummy'),
       new Object(), new Array(), new Error('foo'), Error('bar'),
       new Constructor1(), new Constructor2(),
       new Constructor3(), new Constructor4() ].forEach(function (v) {
@@ -289,8 +291,8 @@ errThrow: object false undefined
 catch: object
 errThrow: function
 catch: function
-errThrow: buffer
-catch: buffer
+errThrow: object
+catch: object
 errThrow: pointer
 catch: pointer
 errThrow: object false undefined
@@ -314,10 +316,10 @@ error: DoubleError: error in error handling, foo: undefined, bar: undefined
 error: ReferenceError: identifier 'zork' undefined, foo: undefined, bar: undefined
 - non-callable errThrow
 error: DoubleError: error in error handling, foo: undefined, bar: undefined
-error: TypeError: not callable, foo: undefined, bar: undefined
+error: TypeError: 123 not callable, foo: undefined, bar: undefined
 - "undefined" (but set) errThrow
 error: DoubleError: error in error handling, foo: undefined, bar: undefined
-error: TypeError: not callable, foo: undefined, bar: undefined
+error: TypeError: undefined not callable, foo: undefined, bar: undefined
 - delete errThrow property
 error: ReferenceError: identifier 'aiee' undefined, foo: undefined, bar: undefined
 error: URIError: fake uri error, foo: undefined, bar: undefined
@@ -399,6 +401,7 @@ function errThrowTest() {
     print('- errThrow gets all value types');
     Duktape.errThrow = function (err) {
         if (err === null) { print('errThrow:', null); }
+        else if (isPlainBuffer(err)) { print('errThrow:', typeof err); }
         else if (typeof err === 'object') { print('errThrow:', typeof err, err instanceof Error, err.message); }
         else { print('errThrow:', typeof err); }
         return err;
@@ -420,7 +423,7 @@ function errThrowTest() {
     Constructor4.prototype = Error.prototype;
 
     [ undefined, null, true, 123, 'foo', [ 'foo', 'bar' ], { foo:1, bar:2 },
-      function () {}, Duktape.Buffer('foo'), Duktape.Pointer('dummy'),
+      function () {}, createPlainBuffer('foo'), Duktape.Pointer('dummy'),
       new Object(), new Array(), new Error('foo'), Error('bar'),
       new Constructor1(), new Constructor2(),
       new Constructor3(), new Constructor4() ].forEach(function (v) {

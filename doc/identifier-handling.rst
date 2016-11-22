@@ -574,8 +574,8 @@ declarative environment (record2) to be created.
 Functions and environment records
 ---------------------------------
 
-A function object (``duk_hcompiledfunction``) records the following
-conceptual variable access related information:
+A function object (``duk_hcompfunc``) records the following conceptual
+variable access related information:
 
 * A variable map, which maps an identifier to a register number.  Ideally
   all function variables / functions are register mapped, but this is not
@@ -787,7 +787,7 @@ and a ``strict`` flag:
    a. Return a value of type Reference whose base value is ``undefined``, whose
       referenced name is ``name``, and whose strict mode flag is ``strict``.
 
-2. Let ``envRec`` be ``lex``\ ‘s environment record.
+2. Let ``envRec`` be ``lex``\ 's environment record.
 
 3. Let ``exists`` be the result of calling the ``HasBinding(N)`` concrete
    method of ``envRec`` passing ``name`` as the argument ``N``.
@@ -799,7 +799,7 @@ and a ``strict`` flag:
 
 5. Else
 
-   a. Let ``outer`` be the value of ``lex``\ ’s outer environment reference.
+   a. Let ``outer`` be the value of ``lex``\ 's outer environment reference.
 
    b. Return the result of calling ``GetIdentifierReference`` passing
       ``outer``, ``name``, and ``strict`` as arguments.
@@ -822,7 +822,7 @@ Eliminating recursion
    a. Return a value of type Reference whose base value is ``undefined``, whose
       referenced name is ``name``, and whose strict mode flag is ``strict``.
 
-2. Let ``envRec`` be ``lex``\ ‘s environment record.
+2. Let ``envRec`` be ``lex``\ 's environment record.
 
 3. Let ``exists`` be the result of calling the ``HasBinding(N)`` concrete
    method of ``envRec`` passing ``name`` as the argument ``N``.

@@ -1,12 +1,12 @@
 name: duk_fatal
 
 proto: |
-  void duk_fatal(duk_context *ctx, duk_errcode_t err_code, const char *err_msg);
+  duk_ret_t duk_fatal(duk_context *ctx, const char *err_msg);
 
 summary: |
-  <p>Call fatal error handler with a specified error code and an optional
-  message (<code>err_msg</code> may be <code>NULL</code>).  The valid range
-  for user error codes is [1,16777215].</p>
+  <p>Call fatal error handler with an optional message (<code>err_msg</code>
+  may be <code>NULL</code>).  Like all strings in Duktape, the error message
+  should be an UTF-8 string, although pure ASCII is strongly recommended.</p>
 
   <p>A fatal error handler never returns and may e.g. exit the current
   process.  Error catching points (like <code>try-catch</code> statements
@@ -14,8 +14,15 @@ summary: |
   You should only call this function when a truly fatal, unrecoverable error
   has occurred.</p>
 
+  <p>Even though the function never returns, the prototype describes a return
+  value which allows code such as:</p>
+  <pre class="c-code">
+  if (argvalue &lt; 0) {
+      return duk_fatal(ctx, "argvalue invalid, cannot continue execution");
+  }
+
 example: |
-  duk_fatal(ctx, DUK_ERR_INTERNAL_ERROR, "assumption failed");
+  duk_fatal(ctx, "assumption failed");
 
 tags:
   - error

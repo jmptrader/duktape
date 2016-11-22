@@ -16,16 +16,20 @@ to call Ecmascript functions from C code and vice versa.
 Main features:
 
 * Embeddable, portable, compact
-* Ecmascript E5/E5.1 compliant
+* Ecmascript E5/E5.1 compliant, some features implemented from
+  Ecmascript 2015 (E6) and Ecmascript 2016 (E7)
 * Khronos/ES6 TypedArray and Node.js Buffer bindings
+* WHATWG Encoding API living standard
 * Built-in debugger
 * Built-in regular expression engine
 * Built-in Unicode support
 * Minimal platform dependencies
 * Combined reference counting and mark-and-sweep garbage collection with finalization
-* Custom features like co-routines, built-in logging framework, and built-in
-  CommonJS-based module loading framework
+* Custom features like co-routines
 * Property virtualization using a subset of Ecmascript E6 Proxy object
+* Bytecode dump/load for caching compiled functions
+* Distributable includes an optional logging framework, CommonJS-based module
+  loading implementations, etc
 * Liberal license
 
 See [duktape.org](http://duktape.org/) for packaged end-user downloads
@@ -39,6 +43,7 @@ Have fun!
 Support
 -------
 
+* Duktape Wiki: [wiki.duktape.org](http://wiki.duktape.org)
 * User community Q&A: Stack Overflow [duktape](http://stackoverflow.com/questions/tagged/duktape) tag
 * Bugs and feature requests: [GitHub issues](https://github.com/svaarala/duktape/issues)
 * General discussion: IRC `#duktape` on `chat.freenode.net` ([webchat](https://webchat.freenode.net))
@@ -50,10 +55,6 @@ This repository is **intended for Duktape developers only**, and contains
 Duktape internals: test cases, internal documentation, sources for the
 duktape.org web site, etc.
 
-Current branch policy: the "master" branch is used for active development,
-other branches are frequently rebased feature branches (so you should not
-fork off them), and tags are used for releases.
-
 Getting started: end user
 -------------------------
 
@@ -62,55 +63,87 @@ distributables available from [duktape.org/download.html](http://duktape.org/dow
 See [duktape.org/guide.html#gettingstarted](http://duktape.org/guide.html#gettingstarted)
 for the basics.
 
-However, if you really want to use a bleeding edge version:
+Automatically generated bleeding edge snapshots from master are available at
+[duktape.org/snapshots](http://duktape.org/snapshots).
 
-    $ git clone https://github.com/svaarala/duktape.git
-    $ cd duktape
-    $ make dist-src
+The distributable `src/` directory contains a `duk_config.h` configuration
+header and amalgamated sources for Duktape default configuration.  Use
+`python tools/configure.py` to create header and sources for customized
+configuration options, see http://wiki.duktape.org/Configuring.html.  For
+example, to enable fastint support (example for Linux):
 
-Then use `duktape-<version>.tar.xz` like a normal source distributable.
+    $ tar xvfJ duktape-2.0.0.tar.xz
+    $ cd duktape-2.0.0
+    $ rm -rf src-custom
+    $ python tools/configure.py \
+          --source-directory src-input \
+          --output-directory src-custom \
+          --config-metadata config \
+          -DDUK_USE_FASTINT
 
-Getting started: developing Duktape
------------------------------------
+    # src-custom/ will now contain: duktape.c, duktape.h, duk_config.h.
 
-If you intend to change Duktape internals, build the source distributable or
-the website, run test cases, etc:
+You can also clone this repository, make modifications, and build a source
+distributable on Linux, OSX, and Windows using `python util/dist.py`.
 
-    # Install required packages (exact packages depend on distribution)
-    $ sudo apt-get install nodejs nodejs-legacy npm perl ant openjdk-7-jdk \
-          libreadline6-dev libncurses-dev python-rdflib python-bs4 python-yaml \
-          clang llvm
+Getting started: modifying and rebuilding the distributable
+-----------------------------------------------------------
 
-    # Compile the command line tool ('duk')
-    $ git clone https://github.com/svaarala/duktape.git
-    $ cd duktape
-    $ make
+If you intend to change Duktape internals and want to rebuild the source
+distributable in Linux, OSX, or Windows:
 
-    # If you want to build dukweb.js or run Emscripten targets, you need
-    # to setup Emscripten fastcomp manually, see doc/emscripten-status.rst
-    # for step-by-step instructions.
+    # Linux; can often install from packages or using 'pip'
+    $ sudo apt-get install python python-yaml
+    $ python util/dist.py
 
-    # Run Ecmascript and API testcases, and some other tests
-    $ make ecmatest
-    $ make apitest
-    $ make regfuzztest
-    $ make underscoretest    # see doc/underscore-status.rst
-    $ make test262test       # see doc/test262-status.rst
-    $ make emscriptentest    # see doc/emscripten-status.rst
-    $ make emscriptenmandelbrottest  # run Emscripten-compiled mandelbrot.c with Duktape
-    $ make emscripteninceptiontest   # run Emscripten-compiled Duktape with Duktape
-    $ make jsinterpretertest
-    $ make luajstest
-    $ make dukwebtest        # then browse to file:///tmp/dukweb-test/dukweb.html
-    $ make xmldoctest
-    $ make bluebirdtest
-    # etc
+    # OSX
+    # Install Python 2.7.x
+    $ pip install PyYAML
+    $ python util/dist.py
 
-**Note: the repo Makefile is intended for Linux developer use**, it is not a
-multi-platform "end user" Makefile.  In particular, the Makefile is not
-intended to work on e.g. OSX or Windows.  The source distributable has more
-user-friendly Makefile examples, but you should normally simply write your
-own Makefile when integrating Duktape into your program.
+    # Windows
+    ; Install Python 2.7.x from python.org, and add it to PATH
+    > pip install PyYAML
+    > python util\dist.py
+
+The source distributable directory will be in `dist/`.
+
+For platform specific notes see http://wiki.duktape.org/DevelopmentSetup.html.
+
+Getting started: other development (Linux only)
+-----------------------------------------------
+
+Other development stuff, such as building the website and running test cases,
+is based on a `Makefile` **intended for Linux only**.  See detailed
+instructions in http://wiki.duktape.org/DevelopmentSetup.html.
+
+Branch policy
+-------------
+
+* The `master` branch is used for active development.  While pull requests
+  are tested before merging, master may be broken from time to time.  When
+  development on a new major release starts, master will also get API
+  incompatible changes without warning.  For these reasons **you should
+  generally not depend on the master branch** for building your project; use
+  a release tag or a release maintenance branch instead.
+
+* Pull requests and their related branches are frequently rebased so you
+  should not fork off them.  Pull requests may be open for a while for
+  testing and discussion.
+
+* Release tags like `v1.4.1` are used for releases and match the released
+  distributables.  These are stable once the release is complete.
+
+* Maintenance branches are used for backporting fixes and features for
+  maintenance releases.  Documentation changes go to master for maintenance
+  releases too.  For example, `v1.5-maintenance` was created for the 1.5.0
+  release and is used for 1.5.x maintenance releases.
+
+* A maintenance branch is also created for a major release when master moves
+  on to active development of the next major release.  For example,
+  `v1-maintenance` was created when 1.5.0 was released (last planned 1.x
+  release) and development of 2.0.0 (with API incompatible changes) started
+  on master.  If a 1.6.0 is made, it will be made from `v1-maintenance`.
 
 Versioning
 ----------
@@ -136,3 +169,6 @@ Copyright and license
 
 See [AUTHORS.rst](https://github.com/svaarala/duktape/blob/master/AUTHORS.rst)
 and [LICENSE.txt](https://github.com/svaarala/duktape/blob/master/LICENSE.txt).
+
+[Duktape Wiki](https://github.com/svaarala/duktape-wiki/) is part of Duktape
+documentation and under the same copyright and license.

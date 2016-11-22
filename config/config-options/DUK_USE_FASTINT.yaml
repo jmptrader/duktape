@@ -1,6 +1,6 @@
 define: DUK_USE_FASTINT
-related_feature_defines:
-  - DUK_OPT_FASTINT
+requires:
+  - DUK_USE_64BIT_OPS
 introduced: 1.2.0
 default: false
 tags:

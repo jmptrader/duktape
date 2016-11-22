@@ -46,19 +46,20 @@ type so various approaches are used:
 * Node.js Buffer:
 
   - http://nodejs.org/api/buffer.html
-  - https://nodejs.org/docs/v0.12.1/api/buffer.html
+  - https://nodejs.org/docs/v6.9.1/api/buffer.html
   - https://github.com/joyent/node/blob/master/lib/buffer.js
 
-* Duktape has its own custom types:
+* Duktape has a custom plain buffer type which has a minimal memory footprint:
 
-  - Plain buffer data type which can point to a fixed size buffer,
+  - The plain buffer data type which can point to a fixed size buffer,
     a dynamic (resizable) buffer, or an external (user allocated)
-    buffer
+    buffer.
 
-  - Duktape.Buffer() object wrapper for plain buffer values (similar
-    to how a String object wraps a plain string value)
+  - The plain buffer behaves like ArrayBuffer for Ecmascript code but maintains
+    separate typing in the C API.  It object coerces to an actual ``ArrayBuffer``
+    sharing the same underlying storage.
 
-* Blob (not very relevant):
+* Blob; not very relevant for Duktape:
 
   - https://developer.mozilla.org/en-US/docs/Web/API/Blob
 
@@ -75,8 +76,6 @@ Overview
 Duktape currently supports the following buffer and buffer-related values:
 
 * Plain Duktape buffer
-
-* Duktape.Buffer object
 
 * Node.js Buffer object
 
@@ -97,8 +96,9 @@ object.  Plain buffers can be fixed, dynamic, or external:
   and length can be changed but Duktape won't resize or automatically free
   the buffer.
 
-Plain buffers have virtual properties for buffer byte indices and 'length'.
-Assignment has modulo semantics (e.g. 0x101 is written as 0x01), values
+Plain buffers have virtual properties for buffer byte indices, .length,
+.byteOffset, .byteLength, and .BYTES_PER_ELEMENT.  Assignment has the same
+semantics as Uint8Array: bytes are written with modulo 256 semantics, bytes
 read back as unsigned 8-bit values.  The plain buffer type is designed to
 be as friendly as possible for low level embedded programming, and has a
 minimal footprint because there's no Ecmascript object associated with it.
@@ -109,16 +109,16 @@ The various buffer and view objects ultimately point to an underlying buffer
 and provide access to the full buffer or a slice/view of the buffer using
 either accessor methods (like getUint32()) or virtual index properties.
 
-All buffer objects are internally implemented using the ``duk_hbufferobject``
+All buffer objects are internally implemented using the ``duk_hbufobj``
 type which makes it easy to mix values between different APIs.  As a result
 Duktape e.g. accepts a Node.js Buffer as an input for a Khronos DataView.
 
-duk_hbufferobject
------------------
+duk_hbufobj
+-----------
 
-The internal ``duk_hbufferobject`` type is a heap-allocated structure
-extended from ``duk_hobject``.  In addition having the usual object
-property tables and such, it has C struct fields for quick access:
+The internal ``duk_hbufobj`` type is a heap-allocated structure extended
+from ``duk_hobject``.  In addition having the usual object property tables
+and such, it has C struct fields for quick access:
 
 * A reference to an underlying plain buffer value (``duk_hbuffer``),
   which may be of any type: fixed, dynamic, or external.
@@ -155,23 +155,22 @@ The following figure illustrates these for a fictional Int16-view::
                                               length in elements: 5 (= .length)
                                               virtual indices: 0, 1, 2, 3, 4
 
-Each ``duk_hbufferobject`` has virtual index behavior with indices mapping
-logically to elements in the range [0,length[.  Elements may be signed or
-unsigned integers of multiple sizes, IEEE floats, or IEEE doubles.  All
-accesses to the underlying buffer are byte-based, and no alignment is required
-by Duktape; however, Khronos TypedArray specification restricts creation of
+Each ``duk_hbufobj`` has virtual index behavior with indices mapping logically
+to elements in the range [0,length[.  Elements may be signed or unsigned
+integers of multiple sizes, IEEE floats, or IEEE doubles.  All accesses to
+the underlying buffer are byte-based, and no alignment is required by Duktape;
+however, Khronos TypedArray specification restricts creation of
 non-element-aligned views.  All multi-byte elements are accessed in the host
 endianness (this is required by the Khronos/ES6 TypedArray specification).
 
-A ``duk_hbufferobject`` acts as a both a buffer representation (providing
-Node.js Buffer and ArrayBuffer) and a view representation (prodiving e.g.
-DataView, Uint8Array, and other TypedArray views).  It supports both a direct
-1:1 mapping to an underlying buffer and a slice/view mapping to a subset of
-the buffer.
+A ``duk_hbufobj`` acts as a both a buffer representation (providing Node.js
+Buffer and ArrayBuffer) and a view representation (prodiving e.g. DataView,
+Uint8Array, and other TypedArray views).  It supports both a direct 1:1 mapping
+to an underlying buffer and a slice/view mapping to a subset of the buffer.
 
 The byteLength/byteOffset pair provides a logical window for the buffer object.
 The underlying buffer may be smaller, e.g. as a result of a dynamic buffer
-being resized after a ``duk_hbufferobject`` was created.  For example::
+being resized after a ``duk_hbufobj`` was created.  For example::
 
     +------+---------------------+
     | xx xx:xx xx xx xx xx xx xx | / / / /    underlying buffer resized to 9 bytes
@@ -192,7 +191,10 @@ Duktape is only to provide memory safe behavior:
 * Attempt to write outside the view (fully or partially) is silently ignored.
 
 * Other operations requiring access to the underlying buffer vary in behavior,
-  some operations are silently skipped, etc.
+  some operations are silently skipped, some cause a TypeError, etc.
+
+Beyond memory safety, any specific behavior is not part of versioning
+guarantees and may change even between minor versions.
 
 Summary of buffer-related values
 --------------------------------
@@ -200,42 +202,38 @@ Summary of buffer-related values
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
 | Type              | Specification | .length        | .byteLength | .byteOffset | .BYTES_PER_ELEMENT | .buffer | [index] | Element type | Read coercion | Write coercion      | Endianness  | Accessor methods | Notes                             |
 +===================+===============+================+=============+=============+====================+=========+=========+==============+===============+=====================+=============+==================+===================================+
-| plain buffer      | Duktape       | yes (bytes)    | no          | no          | no                 | no      | yes     | uint8        | uint8         | ToUint32() & 0xff   | n/a         | no               |                                   |
+| plain buffer      | Duktape       | yes (bytes)    | yes         | yes         | yes                | no      | yes     | uint8        | uint8         | ToUint32() & 0xff   | n/a         | no               | Mimic ArrayBuffer, inherit        |
+|                   |               |                |             |             |                    |         |         |              |               |                     |             |                  | from ArrayBuffer.prototype.       |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Duktape.Buffer    | Duktape       | yes (bytes)    | yes         | yes         | 1                  | no      | yes     | uint8        | uint8         | ToUint32() & 0xff   | n/a         | no               |                                   |
-+-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Buffer            | Node.js       | yes (bytes)    | yes         | yes         | 1                  | no      | yes     | uint8        | uint8         | ToUint32() & 0xff   | n/a         | yes              | Based on Node.js v0.12.1.         |
+| Buffer            | Node.js       | yes (bytes)    | yes         | yes         | 1                  | no      | yes     | uint8        | uint8         | ToUint32() & 0xff   | n/a         | yes              | Based on Node.js v0.12.1.         |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
 | ArrayBuffer       | TypedArray    | yes (bytes)    | yes         | yes         | 1                  | no      | yes     | uint8        | uint8         | ToUint32() & 0xff   | n/a         | no               |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
 | DataView          | TypedArray    | yes (bytes)    | yes         | yes         | 1                  | yes     | yes     | uint8        | uint8         | ToUint32() & 0xff   | n/a         | yes              |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Int8Array         | TypedArray    | yes (bytes)    | yes         | yes         | 1                  | yes     | yes     | int8         | int8          | ToUint32() & 0xff   | n/a         | no               |                                   |
+| Int8Array         | TypedArray    | yes (bytes)    | yes         | yes         | 1                  | yes     | yes     | int8         | int8          | ToUint32() & 0xff   | n/a         | no               |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
 | Uint8Array        | TypedArray    | yes (bytes)    | yes         | yes         | 1                  | yes     | yes     | uint8        | uint8         | ToUint32() & 0xff   | n/a         | no               |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Uint8ClampedArray | TypedArray    | yes (bytes)    | yes         | yes         | 1                  | yes     | yes     | uint8        | uint8         | special             | n/a         | no               | Write: special clamp/round.       |
+| Uint8ClampedArray | TypedArray    | yes (bytes)    | yes         | yes         | 1                  | yes     | yes     | uint8        | uint8         | special             | n/a         | no               | Write: special clamp/round.       |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Int16Array        | TypedArray    | yes (elements) | yes         | yes         | 2                  | yes     | yes     | int16        | int16         | ToUint32() & 0xffff | host        | no               |                                   |
+| Int16Array        | TypedArray    | yes (elements) | yes         | yes         | 2                  | yes     | yes     | int16        | int16         | ToUint32() & 0xffff | host        | no               |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Uint16Array       | TypedArray    | yes (elements) | yes         | yes         | 2                  | yes     | yes     | uint16       | uint16        | ToUint32() & 0xffff | host        | no               |                                   |
+| Uint16Array       | TypedArray    | yes (elements) | yes         | yes         | 2                  | yes     | yes     | uint16       | uint16        | ToUint32() & 0xffff | host        | no               |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Int32Array        | TypedArray    | yes (elements) | yes         | yes         | 4                  | yes     | yes     | int32        | int32         | ToUint32()          | host        | no               |                                   |
+| Int32Array        | TypedArray    | yes (elements) | yes         | yes         | 4                  | yes     | yes     | int32        | int32         | ToUint32()          | host        | no               |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Uint32Array       | TypedArray    | yes (elements) | yes         | yes         | 4                  | yes     | yes     | uint32       | uint32        | ToUint32()          | host        | no               |                                   |
+| Uint32Array       | TypedArray    | yes (elements) | yes         | yes         | 4                  | yes     | yes     | uint32       | uint32        | ToUint32()          | host        | no               |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Float32Array      | TypedArray    | yes (elements) | yes         | yes         | 4                  | yes     | yes     | float        | float         | cast to float       | host        | no               |                                   |
+| Float32Array      | TypedArray    | yes (elements) | yes         | yes         | 4                  | yes     | yes     | float        | float         | cast to float       | host        | no               |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
-| Float64Array      | TypedArray    | yes (elements) | yes         | yes         | 8                  | yes     | yes     | double       | double        | cast to double      | host        | no               |                                   |
+| Float64Array      | TypedArray    | yes (elements) | yes         | yes         | 8                  | yes     | yes     | double       | double        | cast to double      | host        | no               |                                   |
 +-------------------+---------------+----------------+-------------+-------------+--------------------+---------+---------+--------------+---------------+---------------------+-------------+------------------+-----------------------------------+
 
 Notes:
 
-* A Duktape.Buffer object is a wrapper around a plain buffer value.
-  It provides a means to create Buffer values and convert a value to a
-  buffer.  Duktape.Buffer.prototype provides buffer handling methods
-  which are also usable for plain buffer values due to automatic object
-  promotion.
+* A plain buffer mimics an ArrayBuffer wherever possible, and inherits
+  methods and other properties through ``ArrayBuffer.prototype``.
 
 * DataView and Node.js Buffer inherit a set of accessor methods from their
   prototype.  These accessors allow fields of different width and type to
@@ -263,7 +261,8 @@ Notes:
   "byteOffset", and "BYTES_PER_ELEMENT" properties.  These are a union of
   various virtual properties used (e.g. byteLength, byteOffset, and
   BYTES_PER_ELEMENT come from TypedArray specification).  They're uniformly
-  provided for all objects implemented internally as a ``duk_hbufferobject``.
+  provided for all objects implemented internally as a ``duk_hbufobj``.
+  They're also provided for the plain buffer type.
 
 Built-in objects related to buffers
 -----------------------------------
@@ -271,12 +270,6 @@ Built-in objects related to buffers
 Duktape plain buffer value:
 
 * None
-
-Duktape.Buffer:
-
-* Duktape.Buffer
-
-* Duktape.Buffer.prototype
 
 Node.js Buffer:
 
@@ -345,12 +338,14 @@ specifications require such behavior, of course).
 
 As a general rule:
 
-* Any Buffer object/view (implemented internally as a ``duk_hbufferobject``)
+* Any Buffer object/view (implemented internally as a ``duk_hbufobj``)
   is accepted by any API expecting a specific object/view.  For example,
   Khronos DataView() constructor accepts a Node.js Buffer, and Node.js
-  Buffer() accepts a Duktape.Buffer as an input.
+  Buffer() accepts a Uint8Array as an input.
 
-* A plain Duktape buffer is accepted as if it was coerced to a Duktape.Buffer.
+* A plain Duktape buffer is accepted as if it was coerced to an ArrayBuffer.
+  To simplify implementation many internals actually do an explicit ArrayBuffer
+  coercion when given plain buffers.
 
 This general rules is complicated by a few practical issues:
 
@@ -362,15 +357,17 @@ This general rules is complicated by a few practical issues:
   coerced to a plain buffer value without copying, as the extra offset
   and length information is not supported for plain buffer values.
 
-**FIXME: elaborate behavior a bit more here, and provide references to
-testcases providing concrete examples.**
+The current mixing behavior is described in Duktape Wiki:
+
+* http://wiki.duktape.org/HowtoBuffers.html
 
 Buffer values in the Duktape C API
 ----------------------------------
 
-**FIXME: discuss how plain buffers and buffer objects work in the C API.
-This is important for practical C code which should be able to consume
-different buffer values more or less transparently.**
+The C API for plain buffer and buffer object handling is described in
+Duktape Wiki:
+
+* http://wiki.duktape.org/HowtoBuffers.html
 
 Node.js Buffer notes
 ====================
@@ -422,7 +419,8 @@ Specification notes:
 
 * Newly created buffers don't seem to be zeroed automatically.  Duktape zeroes
   buffer data as a side effect of underlying ``duk_hbuffer`` values being
-  automatically zeroed.
+  automatically zeroed.  However, if DUK_USE_ZERO_BUFFER_DATA is not set,
+  Node.js Buffers are not zeroed.
 
 * Buffer inspect() provides a limited hex dump of buffer contents.  Duktape
   doesn't currently provide a similar function by default.
@@ -433,8 +431,6 @@ Specification notes:
 
 Implementation notes
 --------------------
-
-* Share Duktape.Buffer exotic behavior for indices and "length".
 
 * Representation must point to a plain buffer and also needs internal slice
   offset/length properties to implement slice semantics.  Slices must be
@@ -553,8 +549,9 @@ Specification notes
 
 * ArrayBuffer does not have virtual indices or 'length' behavior, but TypedArray
   views do.  DataView does not have virtual indices but e.g. V8 provides them in
-  practice.  (For internal reasons, Duktape ArrayBuffers do provide 'length' and
-  virtual indices.)
+  practice.  For simplicity, Duktape ArrayBuffers and plain buffers do provide
+  'length', virtual indices, and other virtual properties.  This allows plain
+  buffers and ArrayBuffers to be manipulated without a view, which saves memory.
 
 * ArrayBuffer has 'byteLength' and 'byteOffset' but no 'length'.  Views have
   a 'byteLength' and a 'length', where 'length' refers to number of elements,
@@ -590,10 +587,10 @@ Specification notes
 
   Steps for unsigned byte (octet) clamped coercion:
 
-  - Set x to min(max(x, 0), 2^8 − 1).
+  - Set x to min(max(x, 0), 2^8 - 1).
 
   - Round x to the nearest integer, choosing the even integer if it lies
-    halfway between two, and choosing +0 rather than −0.
+    halfway between two, and choosing +0 rather than -0.
 
   - Return the IDL octet value that represents the same numeric value as x.
 
@@ -616,12 +613,15 @@ Specification notes
 
   Unfortunately also the argument order (value/offset) are swapped.
 
+* There are explicit zeroing guarantees for ArrayBuffer constructor and
+  typedarray constructors, so buffer data must be zeroed even when
+  DUK_USE_ZERO_BUFFER_DATA is not set.
+
 Implementation notes
 --------------------
 
 * ArrayBuffer wraps an underlying buffer object.  A buffer object can be
-  "neutered".  ArrayBuffer is similar to Duktape.Buffer; eliminate
-  Duktape.Buffer?
+  "neutered".
 
 * ArrayBufferView classes and DataView refer to an underlying ArrayBuffer,
   and may have an offset.  These could be implemented similar to Node.js
@@ -633,9 +633,6 @@ Implementation notes
   is an object, so this is rather heavyweight.
 
 * Should be optional and disabled by default because of footprint concerns.
-
-* Should have a toLogString() which prints inspect() output or some other
-  useful oneliner.
 
 Merged read/write algorithm for element access
 ==============================================
@@ -927,13 +924,13 @@ View/slice notes
     read needs no change.  Must be taken into account when byte length is
     needed.
 
-Buffer validity checks
-----------------------
+Buffer validity checksand unbacked buffers
+------------------------------------------
 
 To ensure memory safety, all memory accesses need to be checked against the
 size of the underlying buffer even if the access is within the configured
-view/slice.  This is needed because an underlying buffer may be a dynamic one
-and can be resized at any point.
+view/slice.  This is needed because an underlying buffer may be dynamic or
+external and can be resized/reconfigured at any point.
 
 In particular, the underlying buffer may be resized as a side effect of any
 operation that triggers code to run: the code may call into user code which
@@ -949,6 +946,229 @@ there must be no side effects between the check and the operation:
 Future work
 ===========
 
+Missing ES6 features
+--------------------
+
+General semantics:
+
+* ToLength() coercion allows ArrayBuffer and typed array length up to
+  ``2^53 - 1``.
+
+* Virtual index getters/setters don't handle out-of-bound accesses
+  correctly (they should not be inherited through the inheritance chain).
+
+* Behavior for "detached" ArrayBuffers don't necessarily implement the
+  behavior described in http://www.ecma-international.org/ecma-262/6.0/#sec-properties-of-the-arraybuffer-instances:
+  "... all operators to access or modify data contained in the ArrayBuffer instance will fail."
+  However, there's no support for creating a detached buffer now, so this
+  doesn't really matter.
+
+* Coercion behavior may be correct, but needs to be checked for typed arrays
+  and DataView.
+
+ArrayBuffer:
+
+* ``ArrayBuffer.prototype[@@toStringTag]`` missing.
+
+DataView:
+
+* ``DataView.prototype.buffer`` is an accessor property, currently ``.buffer``
+  is a concrete property.
+
+* ``DataView.prototype[@@toStringTag]`` missing.
+
+Typed arrays:
+
+* Typed array constructors like ``Uint8Array`` should inherit from an unnamed
+  prototype object which hosts shared properties like ``.from()``.
+
+* ``%TypedArray%.from`` missing.
+
+* ``%TypedArray%.of`` missing.
+
+* ``%TypedArray%.prototype`` is ``%TypedArrayPrototype%`` which Duktape is
+  actually already using.
+
+* The ``.buffer`` property should be inherited from
+  ``%TypedArray%.prototype.buffer`` instead of being a concrete property.
+
+* The ``.byteLength`` property should be inherited, but is virtual.
+  The difference matters if inheritance relationship is altered.
+
+* The ``.byteOffset`` property should be inherited, but is virtual.
+
+* The ``.length`` property should be inherited, but is virtual.
+
+* ``%TypedArray%.prototype.copyWithin()`` is missing.
+
+* ``%TypedArray%.prototype.entries()`` is missing.
+
+* ``%TypedArray%.prototype.every()`` is missing.
+
+* ``%TypedArray%.prototype.fill()`` is missing.
+
+* ``%TypedArray%.prototype.filter()`` is missing.
+
+* ``%TypedArray%.prototype.find()`` is missing.
+
+* ``%TypedArray%.prototype.findIndex()`` is missing.
+
+* ``%TypedArray%.prototype.forEach()`` is missing.
+
+* ``%TypedArray%.prototype.indexOf()`` is missing.
+
+* ``%TypedArray%.prototype.join()`` is missing.
+
+* ``%TypedArray%.prototype.keys()`` is missing.
+
+* ``%TypedArray%.prototype.lastIndexOf()`` is missing.
+
+* ``%TypedArray%.prototype.map()`` is missing.
+
+* ``%TypedArray%.prototype.reduce()`` is missing.
+
+* ``%TypedArray%.prototype.reduceRight()`` is missing.
+
+* ``%TypedArray%.prototype.reverse()`` is missing.
+
+* ``%TypedArray%.prototype.set()`` exists, semantics need to be checked.
+
+* ``%TypedArray%.prototype.slice()`` is missing.
+
+* ``%TypedArray%.prototype.some()`` is missing.
+
+* ``%TypedArray%.prototype.sort()`` is missing.
+
+* ``%TypedArray%.prototype.subarray()`` exists, semantics need to be checked.
+
+* ``%TypedArray%.prototype.toLocaleString()`` is missing.
+
+* ``%TypedArray%.prototype.toString()`` is missing.
+
+* ``%TypedArray%.prototype.values()`` is missing.
+
+* ``%TypedArray%.prototype[@@iterator]()`` is missing.
+
+* ``get %TypedArray%.prototype[@@toStringTag]`` is missing.
+
+The initial implementations for some of the missing methods can be the
+equivalent methods in ``Array.prototype`` with the caveat that ``.length``
+should be accessed directly without invoking side effects.  For now this
+would not be an issue because typed array ``.length`` is a virtual own
+property, and accessing it has no side effects.
+
+Update to newer Node.js Buffer API version
+------------------------------------------
+
+Current:
+
+* https://nodejs.org/docs/v0.12.1/api/buffer.html
+
+Latest at time of writing:
+
+* https://nodejs.org/docs/v6.9.1/api/buffer.html
+
+Gap between current implementation and latest:
+
+* Buffers can be for-of iterated; buf.values(), buf.keys(), and
+  buf.entries() create iterators.  For-of iteration requires @@iterator
+  support.
+
+* ``new Buffer(...)`` is deprecated in favor of ``Buffer.from()``,
+  ``Buffer.alloc()``, and ``Buffer.allocUnsafe()``.
+
+* ``new Buffer(arrayBuffer[, byteOffset [, length]])`` variant is not
+  supported.  This variant is already deprecated.
+
+* ``new Buffer(string[, encoding])`` does not handle encoding correctly.
+  The internal string representation (CESU-8, extended UTF-8, or even
+  invalid UTF-8) is used as buffer bytes as-is.  This is also incorrect
+  for Node.js Buffer v0.12.1 (and already incorrect in master).
+
+* ``Buffer.alloc(size[, fill[, encoding]])`` is missing.
+
+* ``Buffer.allocUnsafe(size)`` is missing.  In practice could be implemented
+  as ``Buffer.alloc(size)`` (ignoring any further parameters) so that a
+  zero-filled buffer is allocated.
+
+* ``Buffer.allocUnsafeSlow(size)`` is missing.  Could be implemented as
+  ``Buffer.alloc(size)`` (ignoring any further parameters).
+
+* ``Buffer.byteLength(string[, encoding])`` ignores the encoding argument
+  and just returns the byte length of the internal string representation
+  (CESU-8 typically, but not always).  It also doesn't handle buffer,
+  Uint8Array, etc values which now have special handling in v6.9.1.
+
+* ``Buffer.from()`` is missing.  It can share most code with the constructor.
+
+* ``Buffer.isEncoding()`` is implemented but (still) only narrowly recognizes
+  the exact string ``"utf8"``.
+
+* ``Buffer.poolSize`` is not provided.  The value is meaningless if it's not
+  used by the implementation (i.e. no "unsafe" buffers are implemented).
+
+* ``SlowBuffer`` is not implemented; it's part of v0.12.1 and deprecated (but
+  present) in v6.9.1.  If deprecated features are supported, it should be
+  implemented.
+
+* ``buf.compare()`` has additional arguments in v6.9.1 (source/target indices)
+  which are not implemented.
+
+* ``buf.copy()`` return value has been specified explicitly, must compare
+  against current implementation (also for truncated copys).
+
+* ``buf.entries()`` missing.  Depends on general iterator support.
+
+* ``buf.fill()`` has an explicit encoding argument which has an effect if
+  the fill argument is a string.  Depends on generally supporting string
+  encodings for Buffer API.
+
+* ``buf.indexOf()`` missing.  Note that this is not the same as the
+  typed array indexOf() because it recognizes Buffers.
+
+* ``buf.includes()`` missing.  Note that this is not the same as typed
+  array includes().
+
+* ``buf.keys()`` missing.
+
+* ``buf.lastIndexOf()`` missing.  Note that this is not the same as typed
+  array lastIndexOf().
+
+* ``buf.length`` writability comments in v6.9.1 may need documentation.
+
+* ``buf.readDoubleBE()``, ``buf.writeDoubleBE()`` and all the other read/write
+  accessors seem to be the same in v6.9.1.   Duktape doesn't implement the
+  ``noAssert`` argument and always checks the offsets (which should be within
+  the specification because:
+
+      Setting noAssert to true allows offset to be beyond the end of buf, but
+      the result should be considered undefined behavior.
+
+* ``buf.swap16()``, ``buf.swap32()``, ``buf.swap64()`` missing.
+
+* ``buf.toString()`` always decodes the buffer using UTF-8 (with replacement
+  characters for invalid sequences), and ignores the encoding argument.
+
+* ``buf.values()`` missing.
+
+* ``buf.write()`` doesn't implement encoding.  In both v0.12.1 and v6.9.1
+  partially encoded characters won't be written at all so that a few bytes at
+  the end of the buffer may (apparently) be left untouched on a truncated
+  write.  Duktape doesn't currently implement this behavior.
+
+* ``buffer.INSPECT_MAX_BYTES`` not implemented.  It's a property on the
+  ``require('buffer')`` module rather than ``Buffer`` or a ``Buffer`` instance.
+
+* ``SlowBuffer`` is not implemented.
+
+Other notes:
+
+* Deprecated features could be moved behind a config option, e.g.
+  ``DUK_USE_NODEJS_BUFFER_DEPRECATED``.
+
+* Node.js Buffer binding should have its own config option, e.g.
+  ``DUK_USE_NODEJS_BUFFER``.
+
 Improve consistency of argument coercion
 ----------------------------------------
 
@@ -961,10 +1181,10 @@ Add support for neutering (detached buffer)
 -------------------------------------------
 
 Currently not supported.  Neutering an ArrayBuffer must also affect all views
-referencing that ArrayBuffer.  Because duk_hbufferobject has a direct
-duk_hbuffer pointer (not a pointer to ArrayBuffer which is stored as .buffer)
-the neutering cannot be implemented by replacing the duk_hbuffer pointer with
-zero, as that wouldn't affect all the shared views.
+referencing that ArrayBuffer.  Because duk_hbufobj has a direct duk_hbuffer
+pointer (not a pointer to ArrayBuffer which is stored as .buffer) the neutering
+cannot be implemented by replacing the duk_hbuffer pointer with zero, as that
+wouldn't affect all the shared views.
 
 Instead, neutering probably needs to be implemented at the plain buffer level;
 for example, by adding a "neutered" flag to duk_hbuffer.  A dynamic buffer can
@@ -985,9 +1205,9 @@ which is close to what current code is doing:
 Configurable endianness for TypedArray views
 --------------------------------------------
 
-Change duk_hbufferobject so that it records requested endianness explicitly:
-host, little, or big endian.  Then use the specified endianness in readfield
-and writefield internal primitives.
+Change duk_hbufobj so that it records requested endianness explicitly: host,
+little, or big endian.  Then use the specified endianness in readfield and
+writefield internal primitives.
 
 This should be relatively straightforward to do, and perhaps useful.
 
@@ -1015,12 +1235,6 @@ Additional arguments to TypedArray constructor
 
 It would be nice to have offset/length when constructing a TypedArray from
 another TypedArray.
-
-Accept plain buffer values where duk_hbufferobject is accepted
---------------------------------------------------------------
-
-This would be convenient and easy to add by automatically coercing the
-"this" argument (which needs to be type checked anyway).
 
 Make the .buffer property virtual
 ---------------------------------
@@ -1068,16 +1282,11 @@ Improve fastint handling for buffer indices, lengths, values, etc.
 Unsorted future work
 --------------------
 
-* Clean up ``duk_hbufferobject`` ``buf == NULL`` handling.  Perhaps don't
-  allow ``NULL`` at all; this depends on the neutering / detached buffer
-  solution.
+* Clean up ``duk_hbufobj`` ``buf == NULL`` handling.  Perhaps don't allow
+  ``NULL`` at all; this depends on the neutering / detached buffer solution.
 
 * Implement and test for integer arithmetic wrap checks e.g. when coercing
   an index into a byte offset by shifting.
-
-* Accept a plain buffer everywhere where a Duktape.Buffer, ArrayBuffer, or
-  Node.js Buffer would be accepted, coercing the plain buffer automatically
-  to a full object (either conceptually or concretely)?
 
 * duk_to_buffer(): coerce a Buffer object into a plain buffer value
   (similarly to how duk_to_string() coerces a String to a plain string)?
@@ -1089,19 +1298,8 @@ Unsorted future work
 
 * Other Duktape C API changes to interact with Buffer objects.
 
-* Duktape.Buffer.prototype.toString() and Duktape.Buffer.prototype.valueOf():
-  what should their behavior be for slices?  Currently slice information is
-  lost, same as if Duktape.Buffer(obj) was called.
-
 * Node.js Buffer.isBuffer(): what is the best behavior for plain buffer and
   other buffer object values?
-
-* ToObject() coercion for a plain buffer now results in Duktape.Buffer because
-  Duktape.Buffer is its "object counterpart" (similar to how a plain string
-  has a String counterpart).  This is consistent as a plain buffer also now
-  inherits properties from Duktape.Buffer.prototype.  It might make sense to
-  make ArrayBuffer the object counterpart for plain buffers and deprecate
-  Duktape.Buffer?
 
 * What to do with Node.js SlowBuffer, INSPECT_MAX_BYTES, and code that does
   ``require('buffer')``?
@@ -1110,16 +1308,12 @@ Unsorted future work
   add testcases, etc.
 
 * Implement fast path for Node.js Buffer constructor when argument is another
-  duk_hbufferobject (now reads indexed properties explicitly).
+  duk_hbufobj (now reads indexed properties explicitly).
 
 * Duktape C API tests for buffer handling.
 
 * Duktape C API test exercising "underlying buffer doesn't cover logical
   buffer slice" cases which cannot be exercised with plain Ecmascript code.
-
-* Add a toLogString() into the prototype to make buffers log better?
-  Currently logging a buffer may produce non-printable characters (e.g.
-  NUL).
 
 * Document Buffer object relationship to JSON, JX, and JC.
 

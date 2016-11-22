@@ -8,13 +8,13 @@
 *** test_2 (duk_safe_call)
 insert at 3 ok
 insert at -1 ok
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index 4'
 *** test_3 (duk_safe_call)
 insert at 0 ok
 insert at -4 ok
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index -5'
 *** test_4 (duk_safe_call)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index -2147483648'
 ===*/
 
 static void prep(duk_context *ctx) {
@@ -25,8 +25,10 @@ static void prep(duk_context *ctx) {
 	duk_push_string(ctx, "foo");  /* -> [ 123 234 345 "foo" ] */
 }
 
-static duk_ret_t test_1(duk_context *ctx) {
+static duk_ret_t test_1(duk_context *ctx, void *udata) {
 	duk_idx_t i, n;
+
+	(void) udata;
 
 	prep(ctx);
 	duk_insert(ctx, -3);          /* -> [ 123 "foo" 234 345 ] */
@@ -38,7 +40,9 @@ static duk_ret_t test_1(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_2(duk_context *ctx) {
+static duk_ret_t test_2(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	prep(ctx);
 	duk_insert(ctx, 3);           /* -> [ 123 234 345 "foo" ]  (legal, keep top) */
 	printf("insert at 3 ok\n");
@@ -49,7 +53,9 @@ static duk_ret_t test_2(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_3(duk_context *ctx) {
+static duk_ret_t test_3(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	prep(ctx);
 	duk_insert(ctx, 0);           /* -> [ "foo" 123 234 345 ]  (legal) */
 	printf("insert at 0 ok\n");
@@ -60,7 +66,9 @@ static duk_ret_t test_3(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_4(duk_context *ctx) {
+static duk_ret_t test_4(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	prep(ctx);
 	duk_insert(ctx, DUK_INVALID_INDEX);  /* (illegal: invalid index) */
 	printf("insert at DUK_INVALID_INDEX ok\n");

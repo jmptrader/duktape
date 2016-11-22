@@ -14,43 +14,8 @@ values.</p>
 <tbody>
 <tr><td class="propname"><a href="#builtin-duktape">Duktape</a></td>
     <td>The Duktape built-in object.  Contains miscellaneous implementation specific stuff.</td></tr>
-<tr><td class="propname"><a href="#virtualization-proxy-object">Proxy</a></td>
-    <td>Proxy constructor borrowed from ES6 (not part of Ecmascript E5/E5.1).</td></tr>
-<tr><td class="propname"><a href="#builtin-require">require</a></td>
-    <td>Non-standard, CommonsJS module loading function.</td></tr>
-<tr><td class="propname"><a href="#builtin-print-alert">print</a></td>
-    <td>Non-standard, browser-like function for writing to <code>stdout</code>.</td></tr>
-<tr><td class="propname"><a href="#builtin-print-alert">alert</a></td>
-    <td>Non-standard, browser-like function for writing to <code>stderr</code>.</td></tr>
 </tbody>
 </table>
-
-<h3 id="builtin-require">require()</h3>
-
-<p>CommonJS module loading function, see
-<a href="#modules">Modules</a>.</p>
-
-<h3 id="builtin-print-alert">print() and alert()</h3>
-
-<p><code>print()</code> writes to <code>stdout</code> with an automatic
-flush afterwards.  The bytes written depend on the arguments:</p>
-<ul>
-<li>If given a single buffer argument, the contents of that buffer are
-    written to <code>stdout</code> as is.  This allows raw byte streams
-    to be reliably written.</li>
-<li>Otherwise arguments are string coerced, joined with a single space
-    character, a newline (0x0a) is appended, and the result is written
-    to <code>stdout</code>.  For instance, <code>print('foo', 'bar')</code>
-    would write the bytes <code>66 6f 6f 20 62 61 72 0a</code>.  Non-ASCII
-    characters are written directly in their internal extended UTF-8
-    representation; for most strings this means that output data is
-    properly UTF-8 encoded.  Terminal encoding, locale, platform newline
-    conventions etc. have no effect on the output.</li>
-</ul>
-
-<p><code>alert()</code> behaves the same way, but writes to
-<code>stderr</code>.  Unlike a browser <code>alert()</code>, the call
-does not block.</p>
 
 <h2 id="builtin-duktape">The Duktape object</h2>
 
@@ -83,18 +48,10 @@ does not block.</p>
     <td>Callback to modify/replace a created error.</td></tr>
 <tr><td class="propname"><a href="#builtin-duktape-errcreate-errthrow">errThrow</a></td>
     <td>Callback to modify/replace an error about to be thrown.</td></tr>
-<tr><td class="propname"><a href="#builtin-duktape-modsearch-modloaded">modSearch</a></td>
-    <td>Module search function, must be provided by user code if using modules.</td></tr>
-<tr><td class="propname"><a href="#builtin-duktape-modsearch-modloaded">modLoaded</a></td>
-    <td>Internal tracking table for loaded modules, maps resolved identifier to module metadata object.</td></tr>
-<tr><td class="propname"><a href="#builtin-duktape-buffer">Buffer</a></td>
-    <td>Buffer constructor (function).</td></tr>
 <tr><td class="propname"><a href="#builtin-duktape-pointer">Pointer</a></td>
     <td>Pointer constructor (function).</td></tr>
 <tr><td class="propname"><a href="#builtin-duktape-thread">Thread</a></td>
     <td>Thread constructor (function).</td></tr>
-<tr><td class="propname"><a href="#builtin-duktape-logger">Logger</a></td>
-    <td>Logger constructor (function).</td></tr>
 </tbody>
 </table>
 
@@ -179,6 +136,7 @@ The first argument is a format (currently supported are "hex", "base64",
 "jx" and "jc"), second argument is the value to encode, and any further
 arguments are format specific.</p>
 
+<!-- XXX: maybe remove support for non-buffer inputs? -->
 <p>For "hex" and "base64", buffer values are encoded as is, other values
 are string coerced and the internal byte representation (extended UTF-8)
 is then encoded.  The result is a string.  For example, to encode a string
@@ -201,15 +159,20 @@ print(result);  // prints JX encoded {foo:123} with 4-space indent
 <p><code>dec()</code> provides the reverse function of <code>enc()</code>.</p>
 
 <p>For "hex" and "base64" the input value is first string coerced (it only
-really makes sense to decode strings).  The result is always a buffer.  For example:</p>
+really makes sense to decode strings).  The result is always a plain buffer.
+For example:</p>
 <pre class="ecmascript-code">
 var result = Duktape.dec('base64', 'Zm9v');
-print(typeof result, result);  // prints 'buffer foo'
+print(typeof result, result);  // prints 'object foo'
 </pre>
 
-<p>If you wish to get back a string value, you can simply:</p>
+<p>If you wish to get back a string value, you can coerce the plain buffer to
+a string e.g. as follows:</p>
 <pre class="ecmascript-code">
-var result = String(Duktape.dec('base64', 'Zm9v'));
+// Use TextDecoder which decodes the input as UTF-8.  You can also use
+// the Node.js Buffer binding to achieve a similar result.
+
+var result = new TextDecoder().decode(Duktape.dec('base64', 'Zm9v'));
 print(typeof result, result);  // prints 'string foo'
 </pre>
 
@@ -403,6 +366,19 @@ debugging and diagnosis, e.g. when estimating rough memory usage of objects.</p>
 <td>-</td>
 </tr>
 <tr>
+<td>buffer, external</td>
+<td>type tag</td>
+<td>heap ptr</td>
+<td>refcount</td>
+<td>heap hdr size</td>
+<td>curr buf size</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
 <td>pointer</td>
 <td>type tag</td>
 <td>internal type tag</td>
@@ -488,7 +464,7 @@ The properties provided for call stack entries may change between versions.
 this call is a no-op.</p>
 
 <!-- Return value is undocumented for now, which is probably good for now.
-     Not sure what the best return value would be.
+     Not sure what the best return value would be.  Arguments are undocumented.
 -->
 
 <h3 id="builtin-duktape-compact">compact()</h3>
@@ -515,89 +491,6 @@ initially non-existent.</p>
 <p>See
 <a href="#error-handlers">Error handlers (errCreate and errThrow)</a> for
 details.</p>
-
-<h3 id="builtin-duktape-modsearch-modloaded">modSearch() and modLoaded</h3>
-
-<p><code>modSearch()</code> is a module search function which must be provided
-by user code to support module loading.
-<code>modLoaded</code> is an internal module loading tracking table
-maintained by Duktape which maps a resolved absolute module identifier to the
-module's <code>module</code> object for modules which are either fully loaded
-or currently being loaded (<code>module.exports</code> is the exported value
-returned by <code>require()</code>).</p>
-
-<p>See <a href="#modules">Modules</a> for details.</p>
-
-<h2 id="builtin-duktape-buffer">Duktape.Buffer (constructor)</h2>
-
-<table>
-<thead>
-<tr>
-<th>Property</th><th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr><td class="propname">prototype</td><td>Prototype for Buffer objects.</td></tr>
-</tbody>
-</table>
-
-<p>The Buffer constructor is a function which returns a plain buffer when
-called as a normal function and a Buffer object when called as a
-constructor.  Otherwise the behavior is the same:</p>
-<ul>
-<li>If the first argument is a plain buffer, the buffer is used as is (a new
-    buffer is not created).  The second argument is ignored.  This form
-    can be used to wrap a plain buffer value into a Buffer object.</li>
-<li>If the first argument is a Buffer object, the internal plain buffer value
-    of the argument is used (a new buffer is not created).  The second argument
-    is again ignored.  If called as a constructor, a new Buffer object is
-    returned, but it will internally point to the same plain buffer value.</li>
-<li>If the first argument is a string, a new buffer is created and the bytes
-    from the string's internal extended UTF-8 representation are copied to the
-    buffer.  The second argument (if present) indicates whether or not the new
-    buffer should be dynamic (resizable); the default value is false.</li>
-<li>If the first argument is a number, a new buffer is created and filled with
-    zero.  The second argument (if present) indicates whether or not the new
-    buffer should be dynamic.  Zero filling the buffer is the default behavior,
-    but this can be disabled with a feature option; if disabled, the contents
-    will be unpredictable.</li>
-<li>When called as a constructor, the result is converted into a Buffer
-    object whose internal value is the plain buffer.  The internal prototype
-    of the newly created Buffer will be the
-    <code>Duktape.Buffer.prototype</code> object.</li>
-</ul>
-
-<p>If the argument is a Node.js Buffer, ArrayBuffer, DataView, or a TypedArray,
-the call behaves as if the argument was a Duktape.Buffer, i.e. the underlying
-plain buffer is returned or promoted to a Duktape.Buffer.  However, any slice
-byte offset/length information is ignored, so that the full underlying buffer
-is always returned.</p>
-
-<div class="note">
-Duktape.Buffer doesn't provide a way to make a copy of a buffer, but you can
-use the TypedArray bindings to do that: <code>copy = Duktape.Buffer(new Uint8Array(new Duktape.Buffer(input)))</code>.
-</div>
-
-<h2>Duktape.Buffer.prototype</h2>
-
-<table>
-<thead>
-<tr>
-<th>Property</th><th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr><td class="propname">toString</td><td>Convert Buffer to a printable string.</td></tr>
-<tr><td class="propname">valueOf</td><td>Return the primitive buffer value held by Buffer.</td></tr>
-</tbody>
-</table>
-
-<p><code>toString()</code> and <code>valueOf</code> accept both plain buffers and
-Buffer objects as their <code>this</code> binding.  This allows code such as:</p>
-<pre class="ecmascript-code">
-var plain_buf = Duktape.Buffer('test');
-print(plain_buf.toString());
-</pre>
 
 <h2 id="builtin-duktape-pointer">Duktape.Pointer (constructor)</h2>
 
@@ -685,66 +578,5 @@ cases:</p>
 </thead>
 <tbody>
 <tr><td colspan="2">No properties at the moment.</td></tr>
-</tbody>
-</table>
-
-<h2 id="builtin-duktape-logger">Duktape.Logger (constructor)</h2>
-
-<table>
-<thead>
-<tr>
-<th>Property</th><th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr><td class="propname">prototype</td><td>Prototype for Logger objects.</td></tr>
-<tr><td class="propname">clog</td><td>Representative logger for log entries written from C code.</td></tr>
-</tbody>
-</table>
-
-<p>Called as a constructor, creates a new Logger object with a specified name
-(first argument).  If the name is omitted, Logger will automatically assign
-a name based on the calling function's <code>fileName</code>.
-If called as a normal function, throws a <code>TypeError</code>.</p>
-
-<p>Logger instances have the following properties:</p>
-<ul>
-<li><code>n</code>: logger name; the property will be missing if (a) the given
-    name is not a string, or (b) no name is given and the automatic assignment
-    fails.  The logger will then inherit a value from the Logger prototype.
-    You can manually set this property later to whatever value is desired.</li>
-<li><code>l</code>: log level, indicates the minimum log level to output.
-    This property is not assigned by default and the logger inherits a default
-    level from the Logger prototype.  You can manually set this property to
-    another value to control log level on a per-logger basis.</li>
-</ul>
-
-<div class="fixme">
-Tail calling might theoretically affect the automatic name assignment (i.e.
-when logger name argument is omitted).  However, constructor calls are never
-converted to tail calls, so this is not a practical issue.
-</div>
-
-<p>See <a href="#logging">Logging</a> on how to use loggers.</p>
-
-<h2>Duktape.Logger.prototype</h2>
-
-<table>
-<thead>
-<tr>
-<th>Property</th><th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr><td class="propname">raw</td><td>Output a formatted log line (buffer value), by default writes to <code>stderr</code>.</td></tr>
-<tr><td class="propname">fmt</td><td>Format a single (object) argument.</td></tr>
-<tr><td class="propname">trace</td><td>Write a trace level (level 0, TRC) log entry.</td></tr>
-<tr><td class="propname">debug</td><td>Write a debug level (level 1, DBG) log entry.</td></tr>
-<tr><td class="propname">info</td><td>Write an info level (level 2, INF) log entry.</td></tr>
-<tr><td class="propname">warn</td><td>Write a warn level (level 3, WRN) log entry.</td></tr>
-<tr><td class="propname">error</td><td>Write an error level (level 4, ERR) log entry.</td></tr>
-<tr><td class="propname">fatal</td><td>Write a fatal level (level 5, FTL) log entry.</td></tr>
-<tr><td class="propname">l</td><td>Default log level, initial value is 2 (info).</td></tr>
-<tr><td class="propname">n</td><td>Default logger name, initial value is "anon".</td></tr>
 </tbody>
 </table>

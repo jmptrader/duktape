@@ -6,21 +6,38 @@ reorganized for readability; when in doubt, consult the header directly.</p>
 
 <h2>Duktape version</h2>
 
-<p>The Duktape version is available through the <code>DUK_VERSION</code> define,
+<p>Duktape version is available through the <code>DUK_VERSION</code> define,
 with the numeric value <code>(major * 10000 + minor * 100 + patch)</code>.
 The same value is available to Ecmascript code through <code>Duktape.version</code>.
 For example, version 1.2.3 would have <code>DUK_VERSION</code> and
-<code>Duktape.version</code> set to 10203.</p>
+<code>Duktape.version</code> set to 10203.  For pre-releases <code>DUK_VERSION</code>
+is one less than the actual release, e.g. 1199 for a 0.12.0 pre-release and 10299
+for a 1.3.0 pre-release.  See <a href="guide.html#versioning">Versioning</a>.</p>
 
-<p>The value of <code>DUK_VERSION</code> for pre-releases is one less than the
-actual release, e.g. 1199 for a 0.12.0 pre-release and 10299 for a 1.3.0
-pre-release.  See <a href="guide.html#versioning">Versioning</a>.</p>
+<h2>Git information</h2>
 
-<p>The <code>DUK_GIT_DESCRIBE</code> define provides a git describe string for
-the Duktape build.  For official releases this is just "v1.0.0" or similar,
-but for snapshot builds it provides useful version information (e.g.
-"v1.0.0-155-g5b7ef1f-dirty").  There is no equivalent of this define in the
-Ecmascript environment.</p>
+<p>The following Git identifiers are available (all refer to the
+<a href="https://github.com/svaarala/duktape">Duktape GitHub repo</a>):</p>
+
+<table>
+<tr>
+<td><code>DUK_GIT_DESCRIBE</code></td>
+<td>Git describe string for the Duktape build.  For official releases this
+is just "v1.0.0" or similar, but for snapshot builds it provides useful
+version information, e.g. "v1.0.0-155-g5b7ef1f-dirty".</td>
+</tr>
+<tr>
+<td><code>DUK_GIT_COMMIT</code></td>
+<td>Exact commit hash where distributable was built from.</td>
+</tr>
+<tr>
+<td><code>DUK_GIT_BRANCH</code></td>
+<td>Branch where the distributable was built from.  This is useful to
+identify prototypes built from a development branch.</td>
+</tr>
+</table>
+
+<p>There are no equivalent defines in the Ecmascript environment.</p>
 
 <h2>Debug protocol version</h2>
 
@@ -35,16 +52,16 @@ typedef duk_ret_t (*duk_c_function)(duk_context *ctx);
 typedef void *(*duk_alloc_function) (void *udata, duk_size_t size);
 typedef void *(*duk_realloc_function) (void *udata, void *ptr, duk_size_t size);
 typedef void (*duk_free_function) (void *udata, void *ptr);
-typedef void (*duk_fatal_function) (duk_context *ctx, duk_errcode_t code, const char *msg);
+typedef void (*duk_fatal_function) (void *udata, const char *msg);
 typedef void (*duk_decode_char_function) (void *udata, duk_codepoint_t codepoint);
 typedef duk_codepoint_t (*duk_map_char_function) (void *udata, duk_codepoint_t codepoint);
-typedef duk_ret_t (*duk_safe_call_function) (duk_context *ctx);
+typedef duk_ret_t (*duk_safe_call_function) (duk_context *ctx, void *udata);
 typedef duk_size_t (*duk_debug_read_function) (void *udata, char *buffer, duk_size_t length);
 typedef duk_size_t (*duk_debug_write_function) (void *udata, const char *buffer, duk_size_t length);
 typedef duk_size_t (*duk_debug_peek_function) (void *udata);
 typedef void (*duk_debug_read_flush_function) (void *udata);
 typedef void (*duk_debug_write_flush_function) (void *udata);
-typedef void (*duk_debug_detached_function) (void *udata);
+typedef void (*duk_debug_detached_function) (duk_context *ctx, void *udata);
 
 struct duk_memory_functions {
         duk_alloc_function alloc_func;
@@ -70,17 +87,7 @@ typedef struct duk_number_list_entry duk_number_list_entry;
 
 <h2>Error codes</h2>
 <pre class="c-code">
-/* Internal error codes */
 #define DUK_ERR_NONE                 0    /* no error (e.g. from duk_get_error_code()) */
-#define DUK_ERR_UNIMPLEMENTED_ERROR  50   /* UnimplementedError */
-#define DUK_ERR_UNSUPPORTED_ERROR    51   /* UnsupportedError */
-#define DUK_ERR_INTERNAL_ERROR       52   /* InternalError */
-#define DUK_ERR_ALLOC_ERROR          53   /* AllocError */
-#define DUK_ERR_ASSERTION_ERROR      54   /* AssertionError */
-#define DUK_ERR_API_ERROR            55   /* APIError */
-#define DUK_ERR_UNCAUGHT_ERROR       56   /* UncaughtError */
-
-/* Ecmascript E5 specification error codes */
 #define DUK_ERR_ERROR                100  /* Error */
 #define DUK_ERR_EVAL_ERROR           101  /* EvalError */
 #define DUK_ERR_RANGE_ERROR          102  /* RangeError */
@@ -93,13 +100,6 @@ typedef struct duk_number_list_entry duk_number_list_entry;
 <h2>Return codes from Duktape/C functions</h2>
 <pre class="c-code">
 /* Return codes for C functions */
-#define DUK_RET_UNIMPLEMENTED_ERROR  (-DUK_ERR_UNIMPLEMENTED_ERROR)
-#define DUK_RET_UNSUPPORTED_ERROR    (-DUK_ERR_UNSUPPORTED_ERROR)
-#define DUK_RET_INTERNAL_ERROR       (-DUK_ERR_INTERNAL_ERROR)
-#define DUK_RET_ALLOC_ERROR          (-DUK_ERR_ALLOC_ERROR)
-#define DUK_RET_ASSERTION_ERROR      (-DUK_ERR_ASSERTION_ERROR)
-#define DUK_RET_API_ERROR            (-DUK_ERR_API_ERROR)
-#define DUK_RET_UNCAUGHT_ERROR       (-DUK_ERR_UNCAUGHT_ERROR)
 #define DUK_RET_ERROR                (-DUK_ERR_ERROR)
 #define DUK_RET_EVAL_ERROR           (-DUK_ERR_EVAL_ERROR)
 #define DUK_RET_RANGE_ERROR          (-DUK_ERR_RANGE_ERROR)
@@ -134,16 +134,22 @@ typedef struct duk_number_list_entry duk_number_list_entry;
 #define DUK_DEFPROP_HAVE_GETTER           (1 &lt;&lt; 7)    /* set getter (given on value stack) */
 #define DUK_DEFPROP_HAVE_SETTER           (1 &lt;&lt; 8)    /* set setter (given on value stack) */
 #define DUK_DEFPROP_FORCE                 (1 &lt;&lt; 9)    /* force change if possible, may still fail for e.g. virtual properties */
+#define DUK_DEFPROP_SET_WRITABLE          (DUK_DEFPROP_HAVE_WRITABLE | DUK_DEFPROP_WRITABLE)
+#define DUK_DEFPROP_CLEAR_WRITABLE        DUK_DEFPROP_HAVE_WRITABLE
+#define DUK_DEFPROP_SET_ENUMERABLE        (DUK_DEFPROP_HAVE_ENUMERABLE | DUK_DEFPROP_ENUMERABLE)
+#define DUK_DEFPROP_CLEAR_ENUMERABLE      DUK_DEFPROP_HAVE_ENUMERABLE
+#define DUK_DEFPROP_SET_CONFIGURABLE      (DUK_DEFPROP_HAVE_CONFIGURABLE | DUK_DEFPROP_CONFIGURABLE)
+#define DUK_DEFPROP_CLEAR_CONFIGURABLE    DUK_DEFPROP_HAVE_CONFIGURABLE
 </pre>
 
 <h2>Enumeration flags for duk_enum()</h2>
 <pre class="c-code">
 /* Enumeration flags for duk_enum() */
 #define DUK_ENUM_INCLUDE_NONENUMERABLE    (1 &lt;&lt; 0)    /* enumerate non-numerable properties in addition to enumerable */
-#define DUK_ENUM_INCLUDE_INTERNAL         (1 &lt;&lt; 1)    /* enumerate internal properties (regardless of enumerability) */
+#define DUK_ENUM_INCLUDE_INTERNAL         (1 &lt;&lt; 1)    /* enumerate internal properties */
 #define DUK_ENUM_OWN_PROPERTIES_ONLY      (1 &lt;&lt; 2)    /* don't walk prototype chain, only check own properties */
 #define DUK_ENUM_ARRAY_INDICES_ONLY       (1 &lt;&lt; 3)    /* only enumerate array indices */
-#define DUK_ENUM_SORT_ARRAY_INDICES       (1 &lt;&lt; 4)    /* sort array indices, use with DUK_ENUM_ARRAY_INDICES_ONLY */
+#define DUK_ENUM_SORT_ARRAY_INDICES       (1 &lt;&lt; 4)    /* sort array indices (applied to full enumeration result, including inherited array indices) */
 #define DUK_ENUM_NO_PROXY_BEHAVIOR        (1 &lt;&lt; 5)    /* enumerate a proxy object itself without invoking proxy behavior */
 </pre>
 

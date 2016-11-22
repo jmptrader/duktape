@@ -2,14 +2,20 @@
 Installing Duktape as a system library
 ======================================
 
-Duktape can be installed as a system library (e.g. as part of a Unix
-distribution) as follows:
+Duktape can be installed as a system library, e.g. as part of a Unix
+distribution, as follows:
 
-* Come up with a ``duk_config.h`` suitable for the target system.  As a
-  general rule you should use the defaults unless they conflict with the
-  target system.  On some systems you may need to override byte order,
-  alignment requirements, Date built-in provider, etc.  See ``duk-config.rst``
-  for details.
+* Run ``tools/configure.py`` to create prepared Duktape header and source
+  files with options suitable for the target system.  As a general rule
+  you should use the defaults unless they conflict with the target system.
+
+  - On some systems you may need to override byte order, alignment requirements,
+    Date built-in provider, etc.
+
+  - When compiling as a Windows DLL use the ``--dll`` option which ensures
+    symbol visibility declspec attributes are used correctly.
+
+  - See http://wiki.duktape.org/Configuring.html for more details and examples.
 
 * Build a system specific installation package with:
 
@@ -42,10 +48,4 @@ There a few limitations in this approach:
   with the same compiler.  When using different compilers basic types or
   struct alignment rules (among other things) may differ.  In practice it's
   unlikely you'll run into problems, at least when using mainline compilers
-  like gcc/clang.
-
-Before Duktape 1.3 the application would also need to use the same feature
-options (``DUK_OPT_xxx``) used when compiling the shared Duktape library.
-However, as of Duktape 1.3 all the relevant config options (``DUK_USE_xxx``)
-are encapsulated in ``duk_config.h`` so they can be modified without relying
-on command line feature options.
+  like gcc and clang.

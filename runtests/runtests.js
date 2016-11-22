@@ -8,7 +8,7 @@
 
 var fs = require('fs'),
     path = require('path'),
-//    temp = require('temp'),
+    tmp = require('tmp'),
     child_process = require('child_process'),
     async = require('async'),
     xml2js = require('xml2js'),
@@ -26,18 +26,19 @@ var optMinifyClosure;
 var optMinifyUglifyJS;
 var optMinifyUglifyJS2;
 var optUtilIncludePath;
+var optEmdukTrailingLineHack;
 var knownIssues;
 
 /*
  *  Utils.
  */
 
-// FIXME: placeholder; for some reason 'temp' didn't work
-var tmpCount = 0;
-var tmpUniq = process.pid || Math.floor(Math.random() * 1e6);
-
+// Generate temporary filename, file will be autodeleted on exit unless
+// deleted explicitly.  See: https://www.npmjs.com/package/tmp
 function mkTempName(ext) {
-    return '/tmp/runtests-' + tmpUniq + '-' + (++tmpCount) + (ext !== undefined ? ext : '');
+    var fn = tmp.tmpNameSync({ keep: false, prefix: 'tmp-runtests-', postfix: (typeof ext === 'undefined' ? '' : '' + ext) });
+    //console.log('mkTempName -> ' + fn);
+    return fn;
 }
 
 function safeUnlinkSync(filePath) {
@@ -144,6 +145,14 @@ function executeTest(options, callback) {
     function execDone(error, stdout, stderr) {
         var res;
 
+        // Emduk outputs an extra '\x20\0a' to end of stdout, strip it
+        if (optEmdukTrailingLineHack &&
+            typeof stdout === 'string' &&
+            stdout.length >= 2 &&
+            stdout.substring(stdout.length - 2) === ' \n') {
+            stdout = stdout.substring(0, stdout.length - 2);
+        }
+
         res = {
             testcase: options.testcase,
             engine: options.engine,
@@ -236,7 +245,8 @@ function executeTest(options, callback) {
         execopts = {
             maxBuffer: 128 * 1024 * 1024,
             timeout: timeout,
-            stdio: 'pipe'
+            stdio: 'pipe',
+            killSignal: 'SIGKILL'
         };
 
         //console.log(cmdline);
@@ -257,9 +267,9 @@ function executeTest(options, callback) {
         // FIXME: listing specific options here is awkward, must match Makefile
         cmd = [ 'gcc', '-o', tempExe,
                 '-L.',
-                '-Idist/src',
+                '-Iprep/nondebug',  // this particularly is awkward
                 '-Wl,-rpath,.',
-                '-pedantic', '-ansi', '-std=c99', '-Wall', '-fstrict-aliasing', '-D__POSIX_C_SOURCE=200809L', '-D_GNU_SOURCE', '-D_XOPEN_SOURCE', '-Os', '-fomit-frame-pointer',
+                '-pedantic', '-ansi', '-std=c99', '-Wall', '-Wdeclaration-after-statement', '-fstrict-aliasing', '-D__POSIX_C_SOURCE=200809L', '-D_GNU_SOURCE', '-D_XOPEN_SOURCE', '-Os', '-fomit-frame-pointer',
                 '-g', '-ggdb',
                 '-Werror',
                 //'-m32',
@@ -267,13 +277,18 @@ function executeTest(options, callback) {
                 tempSource,
                 '-lduktape',
                 //'-lduktaped',
-                '-lm' ];
+                '-lm'
+        ];
+        if (options.testcase.meta.pthread) {
+            cmd.push('-lpthread');
+        }
 
         cmdline = cmd.join(' ');
         execopts = {
             maxBuffer: 128 * 1024 * 1024,
             timeout: timeout,
-            stdio: 'pipe'
+            stdio: 'pipe',
+            killSignal: 'SIGKILL'
         };
 
         console.log(options.testPath, cmdline);
@@ -359,7 +374,7 @@ var API_TEST_HEADER =
     "\t\tduk_ret_t _rc; \\\n" +
     "\t\tprintf(\"*** %s (duk_safe_call)\\n\", #func); \\\n" +
     "\t\tfflush(stdout); \\\n" +
-    "\t\t_rc = duk_safe_call(ctx, (func), 0, 1); \\\n" +
+    "\t\t_rc = duk_safe_call(ctx, (func), NULL, 0, 1); \\\n" +
     "\t\tprintf(\"==> rc=%d, result='%s'\\n\", (int) _rc, duk_safe_to_string(ctx, -1)); \\\n" +
     "\t\tfflush(stdout); \\\n" +
     "\t\tduk_pop(ctx); \\\n" +
@@ -467,6 +482,7 @@ function testRunnerMain() {
         .boolean('verbose')
         .boolean('report-diff-to-other')
         .boolean('valgrind')
+        .boolean('emduk-trailing-line-hack')
         .describe('num-threads', 'number of threads to use for testcase execution')
         .describe('test-sleep', 'sleep time (milliseconds) between testcases, avoid overheating :)')
         .describe('run-duk', 'run testcase with Duktape')
@@ -486,6 +502,7 @@ function testRunnerMain() {
         .describe('minify-uglifyjs', 'path for UglifyJS executable')
         .describe('minify-uglifyjs2', 'path for UglifyJS2 executable')
         .describe('known-issues', 'known issues yaml file')
+        .describe('emduk-trailing-line-hack', 'strip bogus newline from end of emduk stdout')
         .demand('prep-test-path')
         .demand('util-include-path')
         .demand(1)   // at least 1 non-arg
@@ -757,6 +774,10 @@ function testRunnerMain() {
 
     if (argv['known-issues']) {
         knownIssues = yaml.load(argv['known-issues']);
+    }
+
+    if (argv['emduk-trailing-line-hack']) {
+        optEmdukTrailingLineHack = true;
     }
 
     engines = [];

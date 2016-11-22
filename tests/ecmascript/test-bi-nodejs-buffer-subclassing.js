@@ -1,10 +1,8 @@
 /*
  *  Subclassing Buffers.
  *
- *  Right now .slice() returns a new view instance which copies the
- *  internal prototype of the this binding (instead of using Buffer.prototype).
- *
- *  This is probably not the preferred behavior, but test for current behavior.
+ *  Right now .slice() returns a new view instance which has the original
+ *  Buffer.prototype as its internal prototype (changed from Duktape 1.x).
  */
 
 /*---
@@ -13,19 +11,17 @@
 }
 ---*/
 
-/* Custom because current behavior differs from e.g. V8. */
-
 /*===
 object
-[object Buffer]
+[object Uint8Array]
 MyBuffer
 MyNodejsBuffer
 true
 object
-[object Buffer]
-MyBuffer
-MyNodejsBuffer
-true
+[object Uint8Array]
+FGH
+undefined
+false
 ===*/
 
 function slicePrototypeInheritanceTest() {

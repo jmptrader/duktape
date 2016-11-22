@@ -1,7 +1,7 @@
 name: duk_error_va
 
 proto: |
-  void duk_error_va(duk_context *ctx, duk_errcode_t err_code, const char *fmt, va_list ap);
+  duk_ret_t duk_error_va(duk_context *ctx, duk_errcode_t err_code, const char *fmt, va_list ap);
 
 stack: |
   [ ... ] -> [ ... err! ]
@@ -27,5 +27,12 @@ seealso:
   - duk_error
   - duk_throw
   - duk_push_error_object
+  - duk_generic_error_va
+  - duk_eval_error_va
+  - duk_range_error_va
+  - duk_reference_error_va
+  - duk_syntax_error_va
+  - duk_type_error_va
+  - duk_uri_error_va
 
 introduced: 1.1.0

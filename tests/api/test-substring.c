@@ -7,11 +7,11 @@ blen=0, clen=0, str=""
 final top: 1
 ==> rc=0, result='undefined'
 *** test_2 (duk_safe_call)
-==> rc=1, result='TypeError: unexpected type'
+==> rc=1, result='TypeError: string required, found 123456 (stack index 0)'
 *** test_3 (duk_safe_call)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index -2'
 *** test_4 (duk_safe_call)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index -2147483648'
 ===*/
 
 static void dump_string(duk_context *ctx) {
@@ -33,7 +33,7 @@ static void dump_string(duk_context *ctx) {
 	duk_pop(ctx);
 }
 
-static duk_ret_t test_1(duk_context *ctx) {
+static duk_ret_t test_1(duk_context *ctx, void *udata) {
 	/*
 	 *  Test with a string containing non-ASCII to ensure indices are
 	 *  treated correctly as char indices.
@@ -43,11 +43,13 @@ static duk_ret_t test_1(duk_context *ctx) {
 	 */
 	const char *teststr = "666f6fe188b46172";
 
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 
 	duk_push_string(ctx, (const char *) teststr);
 	duk_hex_decode(ctx, -1);
-	duk_to_string(ctx, -1);
+	duk_buffer_to_string(ctx, -1);
 
 	/* basic case */
 	duk_dup_top(ctx);
@@ -76,7 +78,9 @@ static duk_ret_t test_1(duk_context *ctx) {
 }
 
 /* non-string -> error */
-static duk_ret_t test_2(duk_context *ctx) {
+static duk_ret_t test_2(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 
 	duk_push_int(ctx, 123456);
@@ -87,7 +91,9 @@ static duk_ret_t test_2(duk_context *ctx) {
 }
 
 /* invalid index */
-static duk_ret_t test_3(duk_context *ctx) {
+static duk_ret_t test_3(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 
 	duk_push_string(ctx, "foobar");
@@ -98,7 +104,9 @@ static duk_ret_t test_3(duk_context *ctx) {
 }
 
 /* invalid index */
-static duk_ret_t test_4(duk_context *ctx) {
+static duk_ret_t test_4(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 
 	duk_push_string(ctx, "foobar");

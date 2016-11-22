@@ -2,10 +2,8 @@
  *  PrimaryExpression
  */
 
-/* FIXME: needs more tests */
-/* FIXME: comprehensive tests here or specific test files?
- *   - regexp tests
- *   - number literal tests
+/* XXX: add more tests; comprehensive tests in separate files for
+ * e.g. regexps and number literals
  */
 
 function printThisProperty(propName) {
@@ -63,8 +61,8 @@ false
 65
 33
 63
-SyntaxError
-SyntaxError
+88
+99
 ===*/
 
 /* Literal:
@@ -122,8 +120,8 @@ try {
 }
 
 try {
-    // 088 is an invalid NumericLiteral (it must NOT be parsed as a decimal
-    // literal); V8 and Rhino will parse 088 as decimal 88.
+    // 088 is an invalid NumericLiteral in ES5; ES6 allows it to be parsed
+    // as decimal and both V8 and Spidermonkey do so.
     print(eval("088"));
 } catch (e) {
     print(e.name);

@@ -19,26 +19,41 @@ $ cd /tmp/duktape-&lt;version&gt;/
 $ make -f Makefile.cmdline
 </pre>
 
-<div class="note">
-The Makefile assumes you have <code>gcc</code> installed.  If you don't,
+<p>The Makefile assumes you have <code>gcc</code> installed.  If you don't,
 you can just edit the Makefile to match your compiler (the Makefile is
-quite simple).
+quite simple).</p>
+
+<div class="note">
+Duktape doesn't provide built-in bindings for file or console I/O to avoid
+portability issues (for example, some platforms don't have I/O APIs at all).
+The command line utility provides <code>print()</code> and <code>alert()</code>
+bindings using <a href="https://github.com/svaarala/duktape/blob/master/extras/print-alert">extras/print-alert</a>
+to make it easier to play with.  There are useful "extras" in the distributable
+providing useful (optional) bindings such as:
+<ul>
+<li><a href="https://github.com/svaarala/duktape/blob/master/extras/print-alert">print() and alert()</a></li>
+<li><a href="https://github.com/svaarala/duktape/blob/master/extras/console">console object, e.g. console.log()</a></li>
+</ul>
+<b>Throughout the guide examples will assume a <code>print()</code> binding for
+illustration.</b>
 </div>
 
 <div class="note">
-The command line tool avoids platform dependencies by default.  If you're running a
-UNIX variant and have <code>readline</code> and the necessary development headers,
-you can enable line editing support by editing the Makefile:
+The command line tool avoids platform dependencies by default.  You can add
+line editing support via <a href="https://github.com/antirez/linenoise">linenoise</a>
+by editing the Makefile:
 <ul>
 <li>Add <code class="nobreak">-DDUK_CMDLINE_FANCY</code></li>
-<li>Add <code>-lreadline</code> and <code>-lncurses</code></li>
+<li>Add <code>-Ipath/to/linenoise</code> for the <code>linenoise.h</code> header</li>
+<li>Add <code>path/to/linenoise.c</code> to the source list</li>
+<li>Linenoise only works in POSIX environments and requires a C compiler (not C++)</li>
 </ul>
 </div>
 
 <p>You can now run Ecmascript code interactively:</p>
 <pre>
 $ ./duk
-((o) Duktape [no readline] 1.2.0 (v1.2.0)
+((o) Duktape 1.5.0 (v1.5.0)
 duk&gt; print('Hello world!')
 Hello world!
 = undefined
@@ -57,16 +72,38 @@ $ ./duk fib.js
 <h2>Integrating Duktape into your program</h2>
 
 <p>The command line tool is simply an example of a program which embeds
-Duktape.  Embedding Duktape into your program is very simple: just add
-<code>duktape.c</code>, <code>duktape.h</code>, and <code>duk_config.h</code>
-to your build, and call the Duktape API from elsewhere in your program.</p>
+Duktape.  Embedding Duktape into your program is very simple:</p>
+
+<ul>
+<li>Run <code>duktape-N.N.N/tools/configure.py</code> to configure Duktape
+    for build.  The result is a directory containing <code>duktape.c</code>,
+    <code>duktape.h</code>, and <code>duk_config.h</code>.</li>
+<li>Add <code>duktape.c</code>, <code>duktape.h</code>, and <code>duk_config.h</code>
+    to your build, and call the Duktape API from elsewhere in your program.</li>
+</ul>
+
+<p>The Duktape distributable (duktape-N.N.N.tar.xz) <code>src/</code> directory
+contains preconfigured header and source files for the Duktape default configuration
+which can usually be used as is.  If needed, the configuration tool allows you to customize
+Duktape options, such as optimizing Duktape for low memory targets and
+enable/disable features.  See <a href="#compiling">Compiling</a> and
+<a href="http://wiki.duktape.org/Configuring.html">Configuring Duktape for build</a>
+for more details and examples.</p>
 
 <p>The distributable contains a very simple example program, <code>hello.c</code>,
-which illustrates this process.  Compile the test program e.g. as (see
-<a href="#compiling">Compiling</a> for compiler option suggestions):</p>
+which illustrates this process.  Compile the test program with the preconfigured
+Duktape header and source files e.g. as follows:</p>
 <pre>
 $ cd /tmp/duktape-&lt;version&gt;/
-$ gcc -std=c99 -o hello -Isrc/ src/duktape.c examples/hello/hello.c -lm
+$ gcc -std=c99 -o hello -Isrc src/duktape.c examples/hello/hello.c -lm
+</pre>
+
+<p>To customize Duktape configuration use <code>configure.py</code>:</p>
+<pre>
+$ cd /tmp/duktape-&lt;version&gt;/
+# Here we disable Ecmascript 6 Proxy object support
+$ python2 tools/configure.py --output-directory duktape-src -UDUK_USE_ES6_PROXY
+$ gcc -std=c99 -o hello -Iduktape-src duktape-src/duktape.c examples/hello/hello.c -lm
 </pre>
 
 <p>The test program creates a Duktape context and uses it to run some
@@ -119,6 +156,33 @@ Here we need to gloss over some details for brevity, see
 
 <li>
 <pre class="c-code">
+/* For brevity assumes a maximum file length of 16kB. */
+static void push_file_as_string(duk_context *ctx, const char *filename) {
+    FILE *f;
+    size_t len;
+    char buf[16384];
+
+    f = fopen(filename, "rb");
+    if (f) {
+        len = fread((void *) buf, 1, sizeof(buf), f);
+        fclose(f);
+        duk_push_lstring(ctx, (const char *) buf, (duk_size_t) len);
+    } else {
+        duk_push_undefined(ctx);
+    }
+}
+</pre>
+<p>Because Duktape is an embeddable engine and makes minimal assumptions
+there are no file I/O bindings in the default C or Ecmascript API.  The
+above helper is an example of how to push the contents of a file as a
+string; the example uses a fixed read buffer for brevity, a better
+implementation would first check the file size and then allocate a buffer
+for it.  The Duktape distributable includes "extras" which provide, among
+other things, useful C and Ecmascript helpers, including file I/O helpers.</p>
+</li>
+
+<li>
+<pre class="c-code">
 ctx = duk_create_heap_default();
 if (!ctx) {
     printf("Failed to create a Duktape heap.\n");
@@ -136,20 +200,22 @@ for discussion of error handling best practices.</p>
 
 <li>
 <pre class="c-code">
-if (duk_peval_file(ctx, "process.js") != 0) {
+push_file_as_string(ctx, "process.js");
+if (duk_peval(ctx) != 0) {
     printf("Error: %s\n", duk_safe_to_string(ctx, -1));
     goto finished;
 }
 duk_pop(ctx);  /* ignore result */
 </pre>
-<p>The eval call reads in <code>process.js</code>, then compiles and executes
-the script.  The script registers <code>processLine()</code> into the Ecmascript
-global object for later use.  The eval call is protected so that any script
-errors, such as syntax errors, are caught and handled without causing a fatal
-error.  If an error occurs, the error message is coerced safely using
-<a href="api.html#duk_safe_to_string">duk_safe_to_string()</a> which is
-guaranteed not to throw a further error.  The result of the string coercion is
-a <code>const char *</code> pointing to a read-only, NUL-terminated, UTF-8
+<p>First we use our file helper to push <code>process.js</code> onto the value
+stack as a string.  Then we use <code>duk_peval()</code> to compile and run the
+script.  The script registers <code>processLine()</code> into the Ecmascript
+global object for later use.  A <b>protected call, duk_peval(),</b> is used for
+running the script so that any script errors, such as syntax errors, are caught
+and handled without causing a fatal error.  If an error occurs, the error message
+is coerced safely using <a href="api.html#duk_safe_to_string">duk_safe_to_string()</a>
+which is guaranteed not to throw a further error.  The result of the string coercion
+is a <code>const char *</code> pointing to a read-only, NUL-terminated, UTF-8
 encoded string, which can be used directly with <code>printf</code>.</p>
 </li>
 
@@ -301,7 +367,8 @@ script is loaded.  You can also detect it when the code is actually called
 which is more flexible.</p>
 
 <p>A native helper with functionality equivalent to <code>primeCheckEcmascript</code>
-is quite straightforward to implement.  Adding a program main we get
+is quite straightforward to implement.  Adding a program main and a simple
+<code>print()</code> binding into the Ecmascript global object, we get
 <code>primecheck.c</code>:</p>
 <pre class="c-code" include="primecheck.c"></pre>
 

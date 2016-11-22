@@ -2,7 +2,8 @@
  *  Test float assignment and reading it back.
  */
 
-/*@include util-typedarray.js@*/
+/*@include util-buffer.js@*/
+/*@include util-string.js@*/
 
 /*---
 {
@@ -97,7 +98,7 @@ function floatDoubleTest() {
 
     values.forEach(function (v, i) {
         v1[0] = v;
-        print(i, num2str(v), num2str(v1[0]));
+        print(i, numberToString(v), numberToString(v1[0]));
     });
 }
 

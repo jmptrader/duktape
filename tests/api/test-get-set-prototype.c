@@ -26,7 +26,7 @@ top before set: 3
 top after set: 2
 top before get: 2
 top after get: 3
-prototype: TypeError: [[DefaultValue]] coerce failed
+prototype: TypeError: coercion to primitive failed
 top before get: 2
 top after get: 3
 obj1 proto === Object.prototype: 0
@@ -40,14 +40,16 @@ set obj0 prototype to obj1
 set obj1 prototype to obj0
 obj0.foo=123
 obj0.bar=123
-==> rc=1, result='Error: prototype chain limit'
+==> rc=1, result='RangeError: prototype chain limit'
 ===*/
 
 /* Multiple basic tests in one: test duk_set_prototype() and duk_get_prototype()
  * stack top changes, and object/undefined for duk_set_prototype().  Also checks
  * how a naked object works.
  */
-static duk_ret_t test_basic(duk_context *ctx) {
+static duk_ret_t test_basic(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	/* Prototype object: { foo: 123 }, internal prototype is null. */
 	duk_push_object(ctx);
 	duk_push_undefined(ctx);
@@ -120,7 +122,9 @@ static duk_ret_t test_basic(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_loop(duk_context *ctx) {
+static duk_ret_t test_loop(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_push_object(ctx);
 	duk_push_int(ctx, 123);
 	duk_put_prop_string(ctx, -2, "foo");

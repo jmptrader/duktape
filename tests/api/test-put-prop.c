@@ -1,5 +1,5 @@
 /*===
-*** test_ex_writable (duk_safe_call)
+*** test_ex_writable_safecall (duk_safe_call)
 strict: 1
 put rc=1
 result: {"foo":"bar"}
@@ -11,7 +11,7 @@ put rc=1
 result: {"foo":"bar"}
 final top: 1
 ==> rc=0, result='undefined'
-*** test_ex_nonwritable (duk_safe_call)
+*** test_ex_nonwritable_safecall (duk_safe_call)
 strict: 1
 get Math -> rc=1
 Math.PI=3.141592653589793
@@ -21,7 +21,7 @@ strict: 1
 get Math -> rc=1
 Math.PI=3.141592653589793
 ==> rc=1, result='TypeError: not writable'
-*** test_ex_accessor_wo_setter (duk_safe_call)
+*** test_ex_accessor_wo_setter_safecall (duk_safe_call)
 strict: 1
 eval:
 (function () {
@@ -51,7 +51,7 @@ eval:
 })()
 top after eval: 1
 ==> rc=1, result='TypeError: setter undefined'
-*** test_ex_setter_throws (duk_safe_call)
+*** test_ex_setter_throws_safecall (duk_safe_call)
 strict: 1
 eval:
 (function () {
@@ -83,7 +83,7 @@ eval:
 top after eval: 1
 setter, throw error
 ==> rc=1, result='setter error'
-*** test_new_extensible (duk_safe_call)
+*** test_new_extensible_safecall (duk_safe_call)
 strict: 1
 put rc=1
 result: {"foo":1,"bar":"quux"}
@@ -95,7 +95,7 @@ put rc=1
 result: {"foo":1,"bar":"quux"}
 final top: 1
 ==> rc=0, result='undefined'
-*** test_new_not_extensible (duk_safe_call)
+*** test_new_not_extensible_safecall (duk_safe_call)
 strict: 1
 eval:
 (function () { var o = { foo: 1 }; Object.preventExtensions(o); return o; })()
@@ -107,6 +107,14 @@ eval:
 (function () { var o = { foo: 1 }; Object.preventExtensions(o); return o; })()
 top after eval: 1
 ==> rc=1, result='TypeError: not extensible'
+*** test_putprop_shorthand_a_safecall (duk_safe_call)
+{"foo":123,"bar":123,"2001":234,"nul\u0000key":345}
+final top: 1
+==> rc=0, result='undefined'
+*** test_putprop_shorthand_a (duk_pcall)
+{"foo":123,"bar":123,"2001":234,"nul\u0000key":345}
+final top: 1
+==> rc=0, result='undefined'
 ===*/
 
 /* Test property writing API call.
@@ -158,6 +166,10 @@ static duk_ret_t test_ex_writable(duk_context *ctx) {
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
 	return 0;
 }
+static duk_ret_t test_ex_writable_safecall(duk_context *ctx, void *udata) {
+	(void) udata;
+	return test_ex_writable(ctx);
+}
 
 /* strict: error
  * (non-strict: return 0)
@@ -189,6 +201,10 @@ static duk_ret_t test_ex_nonwritable(duk_context *ctx) {
 
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
 	return 0;
+}
+static duk_ret_t test_ex_nonwritable_safecall(duk_context *ctx, void *udata) {
+	(void) udata;
+	return test_ex_nonwritable(ctx);
 }
 
 /* strict: error
@@ -227,6 +243,10 @@ static duk_ret_t test_ex_accessor_wo_setter(duk_context *ctx) {
 
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
 	return 0;
+}
+static duk_ret_t test_ex_accessor_wo_setter_safecall(duk_context *ctx, void *udata) {
+	(void) udata;
+	return test_ex_accessor_wo_setter(ctx);
 }
 
 /* strict: setter error propagates
@@ -271,6 +291,10 @@ static duk_ret_t test_ex_setter_throws(duk_context *ctx) {
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
 	return 0;
 }
+static duk_ret_t test_ex_setter_throws_safecall(duk_context *ctx, void *udata) {
+	(void) udata;
+	return test_ex_setter_throws(ctx);
+}
 
 /* success */
 static duk_ret_t test_new_extensible(duk_context *ctx) {
@@ -292,6 +316,10 @@ static duk_ret_t test_new_extensible(duk_context *ctx) {
 
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
 	return 0;
+}
+static duk_ret_t test_new_extensible_safecall(duk_context *ctx, void *udata) {
+	(void) udata;
+	return test_new_extensible(ctx);
 }
 
 /* strict: error
@@ -322,27 +350,54 @@ static duk_ret_t test_new_not_extensible(duk_context *ctx) {
 	printf("final top: %ld\n", (long) duk_get_top(ctx));
 	return 0;
 }
+static duk_ret_t test_new_not_extensible_safecall(duk_context *ctx, void *udata) {
+	(void) udata;
+	return test_new_not_extensible(ctx);
+}
+
+static duk_ret_t test_putprop_shorthand_a(duk_context *ctx) {
+	duk_eval_string(ctx, "({ foo: 123 })");
+
+	duk_push_uint(ctx, 123);
+	duk_put_prop_string(ctx, -2, "bar" "\x00" "quux");
+
+	duk_push_uint(ctx, 234);
+	duk_put_prop_index(ctx, -2, 2001);
+
+	duk_push_uint(ctx, 345);
+	duk_put_prop_lstring(ctx, -2, "nul" "\x00" "keyx", 7);
+
+	duk_json_encode(ctx, -1);
+	printf("%s\n", duk_to_string(ctx, -1));
+
+	printf("final top: %ld\n", (long) duk_get_top(ctx));
+	return 0;
+}
+static duk_ret_t test_putprop_shorthand_a_safecall(duk_context *ctx, void *udata) {
+	(void) udata;
+	return test_putprop_shorthand_a(ctx);
+}
 
 #define  TEST(func)  do { \
-		TEST_SAFE_CALL(func); \
+		TEST_SAFE_CALL(func ## _safecall); \
 		TEST_PCALL(func); \
 	} while (0)
 
 void test(duk_context *ctx) {
-	/*
-	 *  Cases where own property already exists
-	 */
+	/* Cases where own property already exists. */
 
 	TEST(test_ex_writable);
 	TEST(test_ex_nonwritable);
 	TEST(test_ex_accessor_wo_setter);
 	TEST(test_ex_setter_throws);
 
-	/*
-	 *  Cases where no own property, possibly ancestor
-	 *  property of same name
+	/* Cases where no own property, possibly ancestor
+	 * property of same name.
 	 */
 
 	TEST(test_new_extensible);
 	TEST(test_new_not_extensible);
+
+	/* Shorthands. */
+	TEST(test_putprop_shorthand_a);
 }

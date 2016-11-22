@@ -32,11 +32,16 @@ Checklist for ordinary releases
 
   - Verify by running Duktape cmdline and evaluating ``Duktape.version``
 
+  - Check dist-files/Makefile.sharedlibrary; currently duplicates version
+    number and needs to be fixed manually
+
 * Check dist-files/README.rst
 
 * Ensure LICENSE.txt is up-to-date
 
   - Check year range
+
+  - Also check ``tools/create_spdx_license.py``
 
 * Ensure RELEASES.rst is up-to-date (must be done before candidate tar.xz
   build because dist package contains RELEASES.rst)
@@ -45,15 +50,25 @@ Checklist for ordinary releases
 
   - Release date is in place
 
+* Ensure tests/api/test-all-public-symbols.c is up-to-date
+
+  - Must add all new API calls
+
 * Compilation tests:
 
   - Clean compile for command line tool with (a) no options and (b) common
-    debug options (DUK_USE_DEBUG, DUK_USE_DPRINT, DUK_USE_SELF_TESTS,
+    debug options (DUK_USE_DEBUG, DUK_USE_DEBUG_LEVEL=0, DUK_USE_SELF_TESTS,
     DUK_USE_ASSERTIONS)
 
   - Compile both from ``src`` and ``src-separate``.
 
   - Run ``mandel.js`` to test the the command line tool works.
+
+  - Check that ``duk_tval`` is packed by default on x86 and unpacked on
+    x64
+
+  - util/checklist_compile_test.sh: linux compiler/arch combinations,
+    run in dist, check output manually
 
   - Platform / compiler combinations (incomplete, should be automated):
 
@@ -95,9 +110,16 @@ Checklist for ordinary releases
   macros::
 
     > cd dist
-    > cl /O2 /DDUK_OPT_DLL_BUILD /Isrc /LD src\duktape.c
-    > cl /O2 /DDUK_OPT_DLL_BUILD /Isrc examples\cmdline\duk_cmdline.c duktape.lib
-    > duk_cmdline.exe
+    > python2 tools/configure --output-directory prep --source-directory src-input \
+      --config-metadata config --dll
+    > cl /W3 /O2 /Iprep /LD prep\duktape.c
+    > cl /W3 /O2 /Iprep /Feduk.exe examples\cmdline\duk_cmdline.c duktape.lib
+    > duk.exe
+
+* Test genconfig manually using metadata from the distributable
+
+  - Ensure that Duktape compiles with e.g. ``-DDUK_USE_FASTINT`` genconfig
+    argument
 
 * Ecmascript testcases
 
@@ -125,7 +147,7 @@ Checklist for ordinary releases
 
   - DUK_USE_REFZERO_FINALIZER_TORTURE
 
-  - DUK_USE_MARKANDSWEEP_FINALIZER_TORTURE
+  - DUK_USE_MARKANDSWEEP_FINALIZER_TORTURE + DUK_USE_GC_TORTURE
 
 * Memory usage testing
 
@@ -133,7 +155,9 @@ Checklist for ordinary releases
     resize algorithms (or similar) can lead to unbounded or suboptimal
     memory usage
 
-  - XXX: establish some baseline test
+  - Minimal manual refcount leak test:
+
+    - test-dev-refcount-leak-basic.js
 
 * Performance testing
 
@@ -145,6 +169,8 @@ Checklist for ordinary releases
   - On x86-64:
 
     - make apitest
+
+  - Test with and without ``DUK_USE_UNION_INITIALIZERS``
 
 * Compile option matrix test
 
@@ -178,6 +204,12 @@ Checklist for ordinary releases
 
     - make emscriptenduktest
 
+* emscripten (compile Duktape with emscripten, run with Duktape)
+
+  - on x86-64
+
+    - make emscripteninceptiontest
+
 * JS-Interpreter
 
   - on x86-64
@@ -189,6 +221,13 @@ Checklist for ordinary releases
   - on x86-64
 
     - make luajstest
+
+* Debugger test
+
+  - Test Makefile.dukdebug + debugger/duk_debug.js to ensure all files
+    are included (easy to forget e.g. YAML metadata files)
+
+  - Test JSON proxy
 
 * Release notes (``doc/release-notes-*.rst``)
 
@@ -242,10 +281,7 @@ Checklist for ordinary releases
   - Trivial compile test for combined source
 
   - Trivial compile test for separate sources (important because
-    it's easy to forget to add files in make_dist.sh)
-
-  - Test Makefile.dukdebug + debugger/duk_debug.js to ensure all files
-    are included (easy to forget e.g. YAML metadata files)
+    it's easy to forget to add files in util/dist.py)
 
 * Store binaries to duktape-releases repo
 
@@ -321,12 +357,17 @@ Checklist for maintenance releases
 
 * Bump DUK_VERSION in maintenance branch.
 
+* Check dist-files/Makefile.sharedlibrary; currently duplicates version
+  number and needs to be fixed manually.
+
 * Review diff between previous release and new patch release.
 
 * Tag release, description "maintenance release" should be good enough for
   most patch releases.
 
-* Build release, push it to ``duktape-releases`` in binary and unpacked form.
+* Build release.  Compare release to previous release package by diffing the
+  unpacked directories.  The SPDX license can be diffed by sorting the files
+  first and then using diff -u.
 
 * Build website from master.  Deploy only ``download.html``.
 

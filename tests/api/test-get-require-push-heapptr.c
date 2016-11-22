@@ -6,16 +6,16 @@
 *** test_basic (duk_safe_call)
 top: 7
 idx 0: type 1, duk_get_heapptr() -> NULL
-idx 0: type 1, duk_require_heapptr() -> TypeError: unexpected type
+idx 0: type 1, duk_require_heapptr() -> TypeError: heapobject required, found undefined (stack index 0)
 top: 7
 idx 1: type 2, duk_get_heapptr() -> NULL
-idx 1: type 2, duk_require_heapptr() -> TypeError: unexpected type
+idx 1: type 2, duk_require_heapptr() -> TypeError: heapobject required, found null (stack index 1)
 top: 7
 idx 2: type 3, duk_get_heapptr() -> NULL
-idx 2: type 3, duk_require_heapptr() -> TypeError: unexpected type
+idx 2: type 3, duk_require_heapptr() -> TypeError: heapobject required, found true (stack index 2)
 top: 7
 idx 3: type 4, duk_get_heapptr() -> NULL
-idx 3: type 4, duk_require_heapptr() -> TypeError: unexpected type
+idx 3: type 4, duk_require_heapptr() -> TypeError: heapobject required, found 123 (stack index 3)
 top: 7
 idx 4: type 5, duk_get_heapptr() -> non-NULL
 idx 4: type 5, duk_require_heapptr() -> non-NULL
@@ -27,7 +27,7 @@ idx 6: type 7, duk_get_heapptr() -> non-NULL
 idx 6: type 7, duk_require_heapptr() -> non-NULL
 top: 7
 idx 7: type 0, duk_get_heapptr() -> NULL
-idx 7: type 5, duk_require_heapptr() -> Error: invalid index
+idx 7: type 5, duk_require_heapptr() -> TypeError: heapobject required, found none (stack index 7)
 "test string"
 {foo:"bar"}
 |deadbeef|
@@ -40,9 +40,11 @@ final top: 2
 ==> rc=0, result='undefined'
 ===*/
 
-static duk_ret_t raw_require_heapptr(duk_context *ctx) {
+static duk_ret_t raw_require_heapptr(duk_context *ctx, void *udata) {
 	duk_idx_t i;
 	void *ptr;
+
+	(void) udata;
 
 	i = duk_require_uint(ctx, -1);
 	duk_pop(ctx);
@@ -55,11 +57,13 @@ static duk_ret_t raw_require_heapptr(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_basic(duk_context *ctx) {
+static duk_ret_t test_basic(duk_context *ctx, void *udata) {
 	duk_idx_t i, n;
 	void *ptr;
 	void *p1, *p2, *p3;
 	duk_int_t ret;
+
+	(void) udata;
 
 	duk_push_undefined(ctx);
 	duk_push_null(ctx);
@@ -83,7 +87,7 @@ static duk_ret_t test_basic(duk_context *ctx) {
 		       (long) i, (long) duk_get_type(ctx, i), (ptr ? "non-NULL" : "NULL"));
 
 		duk_push_uint(ctx, (duk_uint_t) i);
-		ret = duk_safe_call(ctx, raw_require_heapptr, 1 /*nargs*/, 1 /*nrets*/);
+		ret = duk_safe_call(ctx, raw_require_heapptr, NULL, 1 /*nargs*/, 1 /*nrets*/);
 		if (ret == DUK_EXEC_SUCCESS) {
 			;
 		} else {
@@ -150,8 +154,10 @@ static duk_ret_t test_basic(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_api_example(duk_context *ctx) {
+static duk_ret_t test_api_example(duk_context *ctx, void *udata) {
 	void *ptr;
+
+	(void) udata;
 
 	duk_eval_string(ctx, "({ foo: 'bar' })");
 	ptr = duk_get_heapptr(ctx, -1);

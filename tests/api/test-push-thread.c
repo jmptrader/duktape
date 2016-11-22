@@ -1,3 +1,11 @@
+static duk_ret_t my_print(duk_context *ctx) {
+	duk_push_string(ctx, " ");
+	duk_insert(ctx, 0);
+	duk_join(ctx, duk_get_top(ctx) - 1);
+	printf("%s\n", duk_safe_to_string(ctx, -1));
+	return 0;
+}
+
 /*===
 *** test_1 (duk_safe_call)
 duk_is_object(1) = 1
@@ -14,9 +22,11 @@ context b: undefined
 ===*/
 
 /* Some basic tests. */
-static duk_ret_t test_1(duk_context *ctx) {
+static duk_ret_t test_1(duk_context *ctx, void *udata) {
 	duk_idx_t thr_idx;
 	duk_context *new_ctx;
+
+	(void) udata;
 
 	duk_push_int(ctx, 123);  /* dummy */
 
@@ -40,9 +50,11 @@ static duk_ret_t test_1(duk_context *ctx) {
 }
 
 /* Thread with shared and fresh globals. */
-static int test_2(duk_context *ctx) {
+static duk_ret_t test_2(duk_context *ctx, void *udata) {
 	duk_context *ctx_a;
 	duk_context *ctx_b;
+
+	(void) udata;
 
 	duk_eval_string_noresult(ctx, "this.globalFoo = 'bar';");
 
@@ -52,6 +64,10 @@ static int test_2(duk_context *ctx) {
 	ctx_b = duk_require_context(ctx, -1);
 
 	printf("top: %ld\n", (long) duk_get_top(ctx));
+
+	/* Dummy print() binding. */
+	duk_push_c_function(ctx_b, my_print, 1);
+	duk_put_global_string(ctx_b, "print");
 
 	/* index 0: thread with globals shared with 'ctx' (has globalFoo)
 	 * index 1: thread with globals separate with 'ctx'

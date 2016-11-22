@@ -41,9 +41,9 @@ index 18, type 8 -> 7, ptr-is-NULL 0, size 10
 buffer: dynamic=0, size=10: 0xdeadbeef
 ==> rc=0, result='undefined'
 *** test_2 (duk_safe_call)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index 3'
 *** test_3 (duk_safe_call)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index -2147483648'
 ===*/
 
 static void dump_buffer(duk_context *ctx) {
@@ -66,9 +66,11 @@ static void dump_buffer(duk_context *ctx) {
 	printf("\n");
 }
 
-static duk_ret_t test_1(duk_context *ctx) {
+static duk_ret_t test_1(duk_context *ctx, void *udata) {
 	duk_size_t i, n;
 	char *buf;
+
+	(void) udata;
 
 	duk_set_top(ctx, 0);
 
@@ -127,14 +129,18 @@ static duk_ret_t test_1(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_2(duk_context *ctx) {
+static duk_ret_t test_2(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 	(void) duk_to_buffer(ctx, 3, NULL);
 	printf("index 3 OK\n");
 	return 0;
 }
 
-static duk_ret_t test_3(duk_context *ctx) {
+static duk_ret_t test_3(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 	(void) duk_to_buffer(ctx, DUK_INVALID_INDEX, NULL);
 	printf("index DUK_INVALID_INDEX OK\n");

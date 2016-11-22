@@ -15,8 +15,7 @@ example: |
   duk_debugger_cooperate(ctx);
 
 tags:
-  - debug
-  - experimental
+  - debugger
 
 seealso:
   - duk_debugger_attach

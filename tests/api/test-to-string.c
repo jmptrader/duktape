@@ -15,22 +15,24 @@ index 10, string: 'foo'
 index 11, string: 'foo'
 index 12, string: '[object Object]'
 index 13, string: '[object Thread]'
-index 14, string: ''
-index 15, string: 'abcdefghijklmnop'
-index 16, string: ''
-index 17, string: 'abcdefghijklmnop'
+index 14, string: '[object ArrayBuffer]'
+index 15, string: '[object ArrayBuffer]'
+index 16, string: '[object ArrayBuffer]'
+index 17, string: '[object ArrayBuffer]'
 index 18, string: 'null'
 index 19, string: '0xdeadbeef'
 ==> rc=0, result='undefined'
 *** test_2 (duk_safe_call)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index 3'
 *** test_3 (duk_safe_call)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index -2147483648'
 ===*/
 
-static duk_ret_t test_1(duk_context *ctx) {
+static duk_ret_t test_1(duk_context *ctx, void *udata) {
 	duk_int_t i, n;
 	char *ptr;
+
+	(void) udata;
 
 	duk_set_top(ctx, 0);
 	duk_push_undefined(ctx);
@@ -69,14 +71,18 @@ static duk_ret_t test_1(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_2(duk_context *ctx) {
+static duk_ret_t test_2(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 	duk_to_string(ctx, 3);
 	printf("index 3 OK\n");
 	return 0;
 }
 
-static duk_ret_t test_3(duk_context *ctx) {
+static duk_ret_t test_3(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 	duk_to_string(ctx, DUK_INVALID_INDEX);
 	printf("index DUK_INVALID_INDEX OK\n");

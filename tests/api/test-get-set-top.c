@@ -31,7 +31,7 @@ top=3, idx=0, type 5 -> foo
 top=3, idx=1, type 5 -> bar
 top=3, idx=2, type 5 -> quux
 top=3, idx=3, type 0 -> (null)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index -4'
 *** test_3 (duk_safe_call)
 test_3
 --- top=0
@@ -41,7 +41,7 @@ top=3, idx=0, type 5 -> foo
 top=3, idx=1, type 5 -> bar
 top=3, idx=2, type 5 -> quux
 top=3, idx=3, type 0 -> (null)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index -2147483648'
 *** test_4 (duk_safe_call)
 test_4
 --- top=0
@@ -51,7 +51,7 @@ top=3, idx=0, type 5 -> foo
 top=3, idx=1, type 5 -> bar
 top=3, idx=2, type 5 -> quux
 top=3, idx=3, type 0 -> (null)
-==> rc=1, result='Error: invalid index'
+==> rc=1, result='RangeError: invalid stack index 500'
 *** test_5 (duk_safe_call)
 test_5
 --- top=0
@@ -93,7 +93,9 @@ static void prep(duk_context *ctx) {
 	print_stack(ctx);
 }
 
-static duk_ret_t test_1(duk_context *ctx) {
+static duk_ret_t test_1(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	printf("test_1\n");
 	prep(ctx);
 
@@ -112,7 +114,9 @@ static duk_ret_t test_1(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_2(duk_context *ctx) {
+static duk_ret_t test_2(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	printf("test_2\n");
 	prep(ctx);
 
@@ -123,7 +127,9 @@ static duk_ret_t test_2(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_3(duk_context *ctx) {
+static duk_ret_t test_3(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	printf("test_3\n");
 	prep(ctx);
 
@@ -134,7 +140,9 @@ static duk_ret_t test_3(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_4(duk_context *ctx) {
+static duk_ret_t test_4(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	printf("test_4\n");
 	prep(ctx);
 
@@ -145,7 +153,9 @@ static duk_ret_t test_4(duk_context *ctx) {
 	return 0;
 }
 
-static duk_ret_t test_5(duk_context *ctx) {
+static duk_ret_t test_5(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	printf("test_5\n");
 	prep(ctx);
 

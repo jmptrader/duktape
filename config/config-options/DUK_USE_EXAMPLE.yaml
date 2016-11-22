@@ -7,12 +7,6 @@
 # C #define name for the option.  Must match filename minus extension.
 define: DUK_USE_OBJSIZES16
 
-# Optional list of deprecated feature defines related to this option.
-# Useful so that we can issue automatic warnings/errors for deprecated
-# feature options.
-related_feature_defines:
-  - DUK_OPT_OBJSIZES16
-
 # Duktape version number where this option was first introduced.
 introduced: 1.1.0
 
@@ -57,6 +51,11 @@ default: false
 tags:
   - lowmemory
   - experimental
+
+# When set to true, genconfig.py will warn if no forced value is provided.
+# This should be used sparingly, for options which are really strongly
+# recommended so that configure.py output should warn about it.
+#warn_if_missing: true
 
 # Description for option, no newlines.  Line breaking for e.g. C header
 # is automatic.

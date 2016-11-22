@@ -14,19 +14,19 @@ final top: 1
 alloc (fixed) to 16
 16 bytes: 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2
 resize (fixed) to 64
-==> rc=1, result='TypeError: buffer is not dynamic'
+==> rc=1, result='TypeError: wrong buffer type'
 *** test_3 (duk_safe_call)
 non-buffer
 resize (non-buffer) to 64
-==> rc=1, result='TypeError: unexpected type'
+==> rc=1, result='TypeError: buffer required, found 'foo' (stack index -1)'
 *** test_4 (duk_safe_call)
 non-buffer
 resize (invalid index) to 64
-==> rc=1, result='TypeError: unexpected type'
+==> rc=1, result='TypeError: buffer required, found none (stack index 3)'
 *** test_5 (duk_safe_call)
 non-buffer
 resize (DUK_INVALID_INDEX) to 64
-==> rc=1, result='TypeError: unexpected type'
+==> rc=1, result='TypeError: buffer required, found none (stack index -2147483648)'
 ===*/
 
 static void dump_buffer(duk_context *ctx) {
@@ -41,8 +41,10 @@ static void dump_buffer(duk_context *ctx) {
 	printf("\n");
 }
 
-static duk_ret_t test_1(duk_context *ctx) {
+static duk_ret_t test_1(duk_context *ctx, void *udata) {
 	unsigned char *p;
+
+	(void) udata;
 
 	duk_set_top(ctx, 0);
 
@@ -70,8 +72,10 @@ static duk_ret_t test_1(duk_context *ctx) {
 }
 
 /* fixed buffer */
-static duk_ret_t test_2(duk_context *ctx) {
+static duk_ret_t test_2(duk_context *ctx, void *udata) {
 	unsigned char *p;
+
+	(void) udata;
 
 	duk_set_top(ctx, 0);
 
@@ -91,7 +95,9 @@ static duk_ret_t test_2(duk_context *ctx) {
 }
 
 /* non-buffer */
-static duk_ret_t test_3(duk_context *ctx) {
+static duk_ret_t test_3(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 
 	printf("non-buffer\n");
@@ -105,7 +111,9 @@ static duk_ret_t test_3(duk_context *ctx) {
 }
 
 /* invalid index */
-static duk_ret_t test_4(duk_context *ctx) {
+static duk_ret_t test_4(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 
 	printf("non-buffer\n");
@@ -119,7 +127,9 @@ static duk_ret_t test_4(duk_context *ctx) {
 }
 
 /* DUK_INVALID_INDEX */
-static duk_ret_t test_5(duk_context *ctx) {
+static duk_ret_t test_5(duk_context *ctx, void *udata) {
+	(void) udata;
+
 	duk_set_top(ctx, 0);
 
 	printf("non-buffer\n");
